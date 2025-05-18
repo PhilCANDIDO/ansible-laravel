@@ -6,38 +6,29 @@
   become: true
   vars_files:
     - vars/versions.yml
-  
   pre_tasks:
     - name: Update package cache
       ansible.builtin.package:
         update_cache: true
       when: update_cache | default(true) | bool
-  
   roles:
     - role: php
       tags: [php]
-    
     - role: composer
       tags: [composer]
-    
     - role: nodejs
       tags: [nodejs]
-    
     - role: mysql
       tags: [database, mysql]
       when: db_engine == 'mysql'
-    
     - role: mariadb
       tags: [database, mariadb]
       when: db_engine == 'mariadb'
-    
     - role: postgresql
       tags: [database, postgresql]
       when: db_engine == 'postgresql'
-    
     - role: redis
       tags: [redis]
       when: enable_redis | default(false) | bool
-    
     - role: webserver
       tags: [webserver]
