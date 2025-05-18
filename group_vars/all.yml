@@ -1,0 +1,24 @@
+---
+# Variables for all hosts
+
+# PHP configuration
+php_version: "{{ laravel_versions[laravel_version].php.version }}"
+php_extensions: "{{ laravel_versions[laravel_version].php.extensions }}"
+
+# Composer configuration
+composer_version: "{{ laravel_versions[laravel_version].composer.version }}"
+
+# Node.js configuration
+nodejs_version: "{{ laravel_versions[laravel_version].nodejs.version }}"
+
+# Database configuration
+db_engine: mysql  # Options: mysql, mariadb, postgresql
+
+# Redis configuration
+enable_redis: false
+
+# Webserver configuration
+webserver_type: nginx  # Options: nginx, apache
+
+# Laravel version
+laravel_version: "11"

@@ -1,0 +1,38 @@
+---
+# Laravel version requirements mapping
+# This file maps Laravel versions to their required dependencies
+
+laravel_versions:
+  "11":
+    php:
+      version: "8.2"  # Laravel 11 requires PHP 8.2+
+      extensions:
+        - bcmath
+        - ctype
+        - curl
+        - dom
+        - fileinfo
+        - filter
+        - json
+        - mbstring
+        - openssl
+        - pcre
+        - pdo
+        - pdo_mysql
+        - session
+        - tokenizer
+        - xml
+        - zip
+    composer:
+      version: "latest"  # Always use the latest Composer version
+    nodejs:
+      version: "20.x"    # Using LTS version for Node.js
+    databases:
+      mysql:
+        version: "8.0"
+      mariadb:
+        version: "10.11"  # MariaDB 10.11 LTS
+      postgresql:
+        version: "15"
+    redis:
+      version: "7.0"  # Latest stable Redis version
