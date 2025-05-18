@@ -1,0 +1,74 @@
+# Ansible specific files
+*.retry
+*.pyc
+__pycache__/
+.cache/
+
+# Ansible Vault passwords
+.vault_pass
+.vault_pass.txt
+*.vault
+
+# Local inventory files with sensitive data
+/inventory/local.yml
+
+# Runtime and temporary files
+*.log
+*.tmp
+*.swp
+*~
+
+# Editor and IDE files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Vagrant files
+.vagrant/
+vagrant_ansible_inventory_*
+
+# Virtual environments
+venv/
+env/
+.env/
+
+# Python virtual environments
+.venv
+virtualenv/
+
+# SSH keys that might be used for testing
+*.pem
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+known_hosts
+
+# Credentials and secrets
+/group_vars/*/vault.yml
+/host_vars/*/vault.yml
+
+# Generated files
+/roles/*/files/generated/
+
+# Test artifacts
+.molecule/
+.tox/
+.coverage
+.pytest_cache/
+
+# Terraform files if used alongside Ansible
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+terraform.tfvars
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
