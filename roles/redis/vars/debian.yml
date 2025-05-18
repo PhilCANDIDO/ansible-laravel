@@ -1,0 +1,12 @@
+---
+# roles/redis/vars/debian.yml
+# Redis variables for Debian-based distributions
+
+redis_packages:
+  - "redis-server"
+  - "redis-tools"
+
+redis_user: redis
+redis_group: redis
+redis_service: redis-server
+redis_conf_path: /etc/redis/redis.conf

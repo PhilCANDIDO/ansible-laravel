@@ -1,2 +1,80 @@
 ---
-# postgresql installation tasks
+# roles/postgresql/tasks/install.yml
+# PostgreSQL installation tasks
+
+- name: (install) Set distribution-specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - "default.yml"
+  tags: [postgresql, install]
+
+# Debian/Ubuntu
+- name: (install) Add PostgreSQL repository key (Debian/Ubuntu)
+  ansible.builtin.apt_key:
+    url: "https://www.postgresql.org/media/keys/ACCC4CF8.asc"
+    state: present
+  when: ansible_os_family == 'Debian'
+  tags: [postgresql, install]
+
+- name: (install) Add PostgreSQL repository (Debian/Ubuntu)
+  ansible.builtin.apt_repository:
+    repo: "deb https://apt.postgresql.org/pub/repos/apt/ {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: [postgresql, install]
+
+- name: (install) Install PostgreSQL (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ postgresql_packages }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: [postgresql, install]
+
+# RHEL/CentOS
+- name: (install) Install PostgreSQL repository (RHEL/CentOS)
+  ansible.builtin.yum:
+    name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
+    state: present
+  when: ansible_os_family == 'RedHat'
+  tags: [postgresql, install]
+
+- name: (install) Install PostgreSQL (RHEL/CentOS)
+  ansible.builtin.yum:
+    name: "{{ postgresql_packages }}"
+    state: present
+  when: ansible_os_family == 'RedHat'
+  tags: [postgresql, install]
+
+# Common tasks
+- name: (install) Ensure PostgreSQL service is running and enabled
+  ansible.builtin.service:
+    name: "{{ postgresql_service }}"
+    state: started
+    enabled: true
+  tags: [postgresql, install]
+
+- name: (install) Check if PostgreSQL initialization is needed
+  ansible.builtin.stat:
+    path: "{{ postgresql_data_dir }}/PG_VERSION"
+  register: pgdata_version
+  tags: [postgresql, install]
+
+- name: (install) Set PostgreSQL admin user password
+  become: true
+  become_user: postgres
+  ansible.builtin.command: >
+    psql -c "ALTER USER postgres WITH PASSWORD '{{ postgresql_admin_password }}';"
+  when: 
+    - postgresql_admin_password is defined
+    - postgresql_admin_password != ''
+    - pgdata_version.stat.exists
+  no_log: true
+  register: postgres_password_update
+  changed_when: postgres_password_update.rc == 0
+  tags: [postgresql, install]

@@ -1,0 +1,15 @@
+---
+# roles/postgresql/vars/redhat.yml
+# PostgreSQL variables for RHEL-based distributions
+
+postgresql_packages:
+  - "postgresql{{ postgresql_version }}-server"
+  - "postgresql{{ postgresql_version }}"
+  - "postgresql{{ postgresql_version }}-contrib"
+  - "postgresql{{ postgresql_version }}-devel"
+  - "python3-psycopg2"  # For Ansible PostgreSQL modules
+
+postgresql_service: "postgresql-{{ postgresql_version }}"
+postgresql_config_path: "/var/lib/pgsql/{{ postgresql_version }}/data"
+postgresql_data_dir: "/var/lib/pgsql/{{ postgresql_version }}/data"
+postgresql_bin_path: "/usr/pgsql-{{ postgresql_version }}/bin"

@@ -1,2 +1,64 @@
 ---
-# redis configuration tasks
+# roles/redis/tasks/configure.yml
+# Redis configuration tasks
+
+- name: (configure) Configure Redis
+  ansible.builtin.template:
+    src: redis.conf.j2
+    dest: "{{ redis_conf_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Redis
+  tags: [redis, configure]
+
+- name: (configure) Ensure Redis directories exist with proper permissions
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ redis_user }}"
+    group: "{{ redis_group }}"
+    mode: '0755'
+  loop:
+    - "{{ redis_data_dir }}"
+    - "{{ redis_log_dir }}"
+  tags: [redis, configure]
+
+- name: (configure) Enable overcommit memory
+  ansible.builtin.sysctl:
+    name: vm.overcommit_memory
+    value: '1'
+    state: present
+    reload: true
+  when: redis_enable_vm_overcommit_memory | bool
+  tags: [redis, configure]
+
+- name: (configure) Disable transparent huge pages
+  ansible.builtin.shell: |
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    echo never > /sys/kernel/mm/transparent_hugepage/defrag
+  args:
+    creates: /etc/rc.local.redis_no_thp
+  when: redis_disable_transparent_hugepages | bool
+  tags: [redis, configure]
+
+- name: (configure) Ensure init script starts redis with THP disabled
+  ansible.builtin.lineinfile:
+    path: /etc/rc.local
+    line: |
+      # Added by Ansible to disable transparent hugepages for Redis
+      echo never > /sys/kernel/mm/transparent_hugepage/enabled
+      echo never > /sys/kernel/mm/transparent_hugepage/defrag
+    insertbefore: "^exit 0"
+    create: true
+    mode: '0755'
+  when: redis_disable_transparent_hugepages | bool
+  tags: [redis, configure]
+
+- name: (configure) Create file to indicate THP has been disabled
+  ansible.builtin.file:
+    path: /etc/rc.local.redis_no_thp
+    state: touch
+    mode: '0644'
+  when: redis_disable_transparent_hugepages | bool
+  tags: [redis, configure]

@@ -1,2 +1,27 @@
 ---
+# roles/webserver/defaults/main.yml
 # Default variables for webserver role
+
+# Webserver type
+webserver_type: "nginx"  # Options: nginx, apache
+
+# Server configuration
+webserver_server_name: "laravel.local"
+webserver_server_aliases: []
+webserver_laravel_root: ""  # Set this to the full path of your Laravel application
+webserver_public_root: "{{ webserver_laravel_root }}/public"  # Typically the public directory within your Laravel app
+
+# SSL configuration
+webserver_enable_ssl: false
+webserver_ssl_certificate: ""
+webserver_ssl_certificate_key: ""
+
+# PHP-FPM configuration
+webserver_php_fpm_socket: "unix:/var/run/php/php8.2-fpm.sock"  # Adjust based on your PHP version
+
+# General settings
+webserver_client_max_body_size: "64m"
+webserver_keepalive_timeout: 65
+webserver_gzip: true
+webserver_worker_processes: "auto"
+webserver_worker_connections: 1024

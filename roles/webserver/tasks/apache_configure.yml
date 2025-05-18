@@ -1,0 +1,45 @@
+---
+# roles/webserver/tasks/apache_configure.yml
+# Apache configuration tasks
+
+- name: (apache_configure) Configure Apache global settings
+  ansible.builtin.template:
+    src: apache/apache2.conf.j2
+    dest: "{{ apache_conf_path }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Apache
+  when: ansible_os_family == 'Debian'
+  tags: [webserver, apache, configure]
+
+- name: (apache_configure) Create Apache virtual host directory
+  ansible.builtin.file:
+    path: "{{ apache_vhost_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags: [webserver, apache, configure]
+
+- name: (apache_configure) Configure Apache Laravel virtual host
+  ansible.builtin.template:
+    src: apache/laravel.conf.j2
+    dest: "{{ apache_vhost_dir }}/{{ webserver_server_name }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Apache
+  when: webserver_server_name is defined and webserver_server_name != ''
+  tags: [webserver, apache, configure]
+
+- name: (apache_configure) Enable Laravel virtual host
+  ansible.builtin.command: a2ensite {{ webserver_server_name }}.conf
+  args:
+    creates: /etc/apache2/sites-enabled/{{ webserver_server_name }}.conf
+  notify: Restart Apache
+  when: 
+    - ansible_os_family == 'Debian'
+    - webserver_server_name is defined
+    - webserver_server_name != ''
+  tags: [webserver, apache, configure]

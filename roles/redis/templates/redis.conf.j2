@@ -1,0 +1,53 @@
+# Redis configuration file
+# Managed by Ansible - DO NOT EDIT MANUALLY
+
+# Network
+bind {{ redis_bind_address }}
+port {{ redis_port }}
+{% if redis_unixsocket != "" %}
+unixsocket {{ redis_unixsocket }}
+{% endif %}
+tcp-backlog {{ redis_tcp_backlog }}
+timeout {{ redis_timeout }}
+tcp-keepalive {{ redis_tcp_keepalive }}
+
+# General
+daemonize yes
+supervised auto
+pidfile /var/run/redis/redis-server.pid
+loglevel {{ redis_loglevel }}
+logfile {{ redis_log_dir }}/redis-server.log
+databases {{ redis_databases }}
+
+# Snapshotting
+{% for save in redis_save %}
+save {{ save }}
+{% endfor %}
+stop-writes-on-bgsave-error yes
+rdbcompression {{ redis_rdbcompression }}
+rdbchecksum yes
+dbfilename {{ redis_dbfilename }}
+dir {{ redis_dir }}
+
+# Memory management
+maxmemory {{ redis_maxmemory }}
+maxmemory-policy {{ redis_maxmemory_policy }}
+maxmemory-samples {{ redis_maxmemory_samples }}
+
+# Security
+{% if redis_requirepass != "" %}
+requirepass {{ redis_requirepass }}
+{% endif %}
+
+{% for command in redis_disable_commands %}
+rename-command {{ command }} ""
+{% endfor %}
+
+# Clients
+maxclients 10000
+
+# Advanced configuration
+lazyfree-lazy-eviction no
+lazyfree-lazy-expire no
+lazyfree-lazy-server-del no
+replica-lazy-flush no

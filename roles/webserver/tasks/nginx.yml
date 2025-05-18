@@ -1,2 +1,42 @@
 ---
-# Nginx installation tasks
+# roles/webserver/tasks/nginx.yml
+# NGINX installation tasks
+
+# Debian/Ubuntu
+- name: (nginx) Install NGINX (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ nginx_packages }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: [webserver, nginx, install]
+
+# RHEL/CentOS
+- name: (nginx) Install EPEL repository (RHEL/CentOS)
+  ansible.builtin.package:
+    name: epel-release
+    state: present
+  when: ansible_os_family == 'RedHat'
+  tags: [webserver, nginx, install]
+
+- name: (nginx) Install NGINX (RHEL/CentOS)
+  ansible.builtin.package:
+    name: "{{ nginx_packages }}"
+    state: present
+  when: ansible_os_family == 'RedHat'
+  tags: [webserver, nginx, install]
+
+# Common tasks
+- name: (nginx) Ensure NGINX service is running and enabled
+  ansible.builtin.service:
+    name: "{{ nginx_service }}"
+    state: started
+    enabled: true
+  tags: [webserver, nginx, install]
+
+- name: (nginx) Remove default NGINX virtual host
+  ansible.builtin.file:
+    path: "{{ nginx_default_vhost_path }}"
+    state: absent
+  notify: Restart NGINX
+  tags: [webserver, nginx, install]

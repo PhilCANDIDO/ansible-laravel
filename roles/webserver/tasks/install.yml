@@ -1,2 +1,23 @@
 ---
-# webserver installation tasks
+# roles/webserver/tasks/install.yml
+# Webserver installation tasks
+
+- name: (install) Set distribution-specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - "default.yml"
+  tags: [webserver, install]
+
+- name: (install) Install NGINX
+  include_tasks: nginx.yml
+  when: webserver_type == 'nginx'
+  tags: [webserver, install, nginx]
+
+- name: (install) Install Apache
+  include_tasks: apache.yml
+  when: webserver_type == 'apache'
+  tags: [webserver, install, apache]

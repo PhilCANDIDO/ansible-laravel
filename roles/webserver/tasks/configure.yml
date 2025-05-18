@@ -1,2 +1,37 @@
 ---
-# webserver configuration tasks
+# roles/webserver/tasks/configure.yml
+# Webserver configuration tasks
+
+- name: (configure) Configure NGINX
+  include_tasks: nginx_configure.yml
+  when: webserver_type == 'nginx'
+  tags: [webserver, configure, nginx]
+
+- name: (configure) Configure Apache
+  include_tasks: apache_configure.yml
+  when: webserver_type == 'apache'
+  tags: [webserver, configure, apache]
+
+- name: (configure) Create Laravel application directory if specified
+  ansible.builtin.file:
+    path: "{{ webserver_laravel_root }}"
+    state: directory
+    owner: "{{ webserver_user }}"
+    group: "{{ webserver_group }}"
+    mode: '0755'
+  when: webserver_laravel_root is defined and webserver_laravel_root != ''
+  tags: [webserver, configure]
+
+- name: (configure) Set proper permissions for Laravel storage and bootstrap/cache directories if specified
+  ansible.builtin.file:
+    path: "{{ webserver_laravel_root }}/{{ item }}"
+    state: directory
+    owner: "{{ webserver_user }}"
+    group: "{{ webserver_group }}"
+    mode: '0775'
+    recurse: true
+  loop:
+    - "storage"
+    - "bootstrap/cache"
+  when: webserver_laravel_root is defined and webserver_laravel_root != ''
+  tags: [webserver, configure]

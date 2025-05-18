@@ -1,0 +1,15 @@
+---
+# roles/postgresql/vars/debian.yml
+# PostgreSQL variables for Debian-based distributions
+
+postgresql_packages:
+  - "postgresql-{{ postgresql_version }}"
+  - "postgresql-client-{{ postgresql_version }}"
+  - "postgresql-contrib-{{ postgresql_version }}"
+  - "libpq-dev"
+  - "python3-psycopg2"  # For Ansible PostgreSQL modules
+
+postgresql_service: "postgresql@{{ postgresql_version }}-main"
+postgresql_config_path: "/etc/postgresql/{{ postgresql_version }}/main"
+postgresql_data_dir: "/var/lib/postgresql/{{ postgresql_version }}/main"
+postgresql_bin_path: "/usr/lib/postgresql/{{ postgresql_version }}/bin"
