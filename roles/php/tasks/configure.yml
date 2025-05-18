@@ -1,2 +1,67 @@
 ---
-# php configuration tasks
+# roles/php/tasks/configure.yml
+# PHP configuration for Laravel 11
+
+- name: (configure) Set distribution-specific paths
+  ansible.builtin.include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - "default.yml"
+  tags: [php, configure]
+
+- name: (configure) Create PHP configuration directory if it doesn't exist
+  ansible.builtin.file:
+    path: "{{ php_conf_dir }}"
+    state: directory
+    mode: '0755'
+  tags: [php, configure]
+
+- name: (configure) Set timezone in PHP configuration
+  ansible.builtin.template:
+    src: php-timezone.ini.j2
+    dest: "{{ php_conf_dir }}/10-timezone.ini"
+    mode: '0644'
+  notify: Restart PHP-FPM
+  tags: [php, configure]
+
+- name: (configure) Set PHP memory limit
+  ansible.builtin.template:
+    src: php-memory.ini.j2
+    dest: "{{ php_conf_dir }}/20-memory.ini"
+    mode: '0644'
+  notify: Restart PHP-FPM
+  tags: [php, configure]
+
+- name: (configure) Set PHP upload limits
+  ansible.builtin.template:
+    src: php-uploads.ini.j2
+    dest: "{{ php_conf_dir }}/30-uploads.ini"
+    mode: '0644'
+  notify: Restart PHP-FPM
+  tags: [php, configure]
+
+- name: (configure) Set PHP execution time
+  ansible.builtin.template:
+    src: php-execution.ini.j2
+    dest: "{{ php_conf_dir }}/40-execution.ini"
+    mode: '0644'
+  notify: Restart PHP-FPM
+  tags: [php, configure]
+
+- name: (configure) Set PHP opcache settings
+  ansible.builtin.template:
+    src: php-opcache.ini.j2
+    dest: "{{ php_conf_dir }}/50-opcache.ini"
+    mode: '0644'
+  notify: Restart PHP-FPM
+  tags: [php, configure]
+
+- name: (configure) Ensure PHP-FPM is running and enabled at boot
+  ansible.builtin.service:
+    name: "{{ php_fpm_service }}"
+    state: started
+    enabled: true
+  tags: [php, configure]

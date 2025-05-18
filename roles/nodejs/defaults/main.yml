@@ -1,2 +1,25 @@
 ---
-# Default variables for nodejs role
+# roles/nodejs/defaults/main.yml
+# Default variables for Node.js role
+
+# Node.js version to install (corresponds to major version)
+nodejs_version: "20.x"
+
+# Global npm packages to install
+nodejs_npm_global_packages: []
+  # Examples:
+  # - name: "@vue/cli"
+  # - name: "vite"
+
+# npm configuration values
+nodejs_npm_config_values: []
+  # Examples:
+  # - key: "save-exact"
+  #   value: "true"
+  # - key: "fund"
+  #   value: "false"
+
+# Global npm directory
+# nodejs_npm_global_dir: "/usr/local/lib/npm-global"
+# nodejs_npm_global_owner: root
+# nodejs_npm_global_group: root

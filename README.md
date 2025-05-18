@@ -1,6 +1,6 @@
 # Ansible Laravel 11 Deployment
 
-This Ansible project automates the deployment of all dependencies required to run a Laravel 11 environment.
+This Ansible project automates the deployment of all dependencies required to run a Laravel 11 environment. It provides a complete server setup with PHP, Composer, Node.js, database, Redis (optional), and web server configuration.
 
 ## Project Structure
 
@@ -15,13 +15,13 @@ ansible-laravel/
 ├── vars/                   # Global variables
 │   └── versions.yml        # Laravel version dependency mapping
 └── roles/                  # Ansible roles
-    ├── php/                # PHP installation
+    ├── php/                # PHP installation and configuration
     ├── composer/           # Composer installation
     ├── nodejs/             # Node.js installation
-    ├── mysql/              # MySQL installation
-    ├── mariadb/            # MariaDB installation
-    ├── postgresql/         # PostgreSQL installation
-    ├── redis/              # Redis installation
+    ├── mysql/              # MySQL installation and configuration
+    ├── mariadb/            # MariaDB installation and configuration
+    ├── postgresql/         # PostgreSQL installation and configuration
+    ├── redis/              # Redis installation (optional)
     └── webserver/          # Web server installation (NGINX/Apache)
 ```
 
@@ -45,6 +45,22 @@ The main configuration variables are set in `group_vars/all.yml`:
 - `db_engine`: Database engine to use (options: mysql, mariadb, postgresql)
 - `enable_redis`: Whether to install Redis (default: false)
 - `webserver_type`: Web server to install (options: nginx, apache)
+- `webserver_server_name`: Server name for virtual host
+- `webserver_laravel_root`: Root directory of Laravel application
+
+### Security Note
+For production environments, make sure to change the default passwords in the `group_vars/all.yml` file:
+
+```yaml
+mysql_root_password: "secure_password_change_me"
+mysql_db_password: "laravel_password_change_me"
+mariadb_root_password: "secure_password_change_me"
+mariadb_db_password: "laravel_password_change_me"
+postgresql_admin_password: "secure_password_change_me"
+postgresql_db_password: "laravel_password_change_me"
+```
+
+Consider using Ansible Vault to encrypt these sensitive values.
 
 ## Usage
 
@@ -85,6 +101,11 @@ Set the `db_engine` variable to choose your database:
 db_engine: postgresql  # Options: mysql, mariadb, postgresql
 ```
 
+You can also pass this as an extra variable when running the playbook:
+```bash
+ansible-playbook -i inventory/hosts.yml site.yml -e "db_engine=postgresql"
+```
+
 ### Redis
 
 Enable Redis installation:
@@ -102,6 +123,28 @@ Choose between NGINX and Apache:
 # In group_vars/all.yml or via command line
 webserver_type: apache  # Options: nginx, apache
 ```
+
+### PHP Configuration
+
+Customize PHP settings in `group_vars/all.yml`:
+
+```yaml
+php_memory_limit: "256M"
+php_post_max_size: "128M"
+php_upload_max_filesize: "128M"
+php_max_execution_time: 120
+```
+
+## Laravel Application Deployment
+
+This playbook sets up the server environment for Laravel but doesn't deploy the application itself. After running the playbook, you'll need to:
+
+1. Clone your Laravel repository to the server
+2. Install dependencies with Composer
+3. Set up your `.env` file
+4. Run migrations and other Laravel setup commands
+
+You can automate this process by extending the playbook with additional tasks.
 
 ## GitHub Actions Workflow Example
 
@@ -139,5 +182,4 @@ jobs:
 
 ## License
 
-MIT License
-
+Apache License 2.0

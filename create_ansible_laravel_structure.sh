@@ -1,6 +1,6 @@
 #!/bin/bash
-# Script to create the ansible-laravel project structure
-# Author: Claude
+# Script to organize the ansible-laravel project structure
+# Author: Claude.ai
 # Date: May 18, 2025
 
 set -e  # Exit immediately if a command exits with a non-zero status
@@ -10,338 +10,153 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}Creating ansible-laravel project structure...${NC}"
+echo -e "${YELLOW}Organizing ansible-laravel project structure...${NC}"
 
-# Create the base directory if it doesn't exist
-# mkdir -p ansible-laravel
-# cd ansible-laravel
-
-# Create main directories
-mkdir -p inventory group_vars vars roles
+# Create base directories
+mkdir -p inventory group_vars vars roles templates
 
 # Create the roles subdirectories
 ROLES=("php" "composer" "nodejs" "mysql" "mariadb" "postgresql" "redis" "webserver")
 for role in "${ROLES[@]}"; do
     mkdir -p roles/$role/{tasks,defaults,vars,handlers,templates}
-    
-    # Create basic files for each role
-    echo "---
-# $role role main tasks file
-- name: Include installation tasks
-  include_tasks: install.yml
-
-- name: Include configuration tasks
-  include_tasks: configure.yml
-  when: configure_$role | default(true) | bool" > roles/$role/tasks/main.yml
-    
-    echo "---
-# $role installation tasks" > roles/$role/tasks/install.yml
-    
-    echo "---
-# $role configuration tasks" > roles/$role/tasks/configure.yml
-    
-    echo "---
-# Default variables for $role role" > roles/$role/defaults/main.yml
-    
-    echo "---
-# Internal variables for $role role" > roles/$role/vars/main.yml
-    
-    echo "---
-# Handlers for $role role" > roles/$role/handlers/main.yml
 done
 
-# Create webserver-specific directories for templates
+# Create specific template directories for webserver
 mkdir -p roles/webserver/templates/{nginx,apache}
-touch roles/webserver/templates/nginx/laravel.conf.j2
-touch roles/webserver/templates/apache/laravel.conf.j2
 
-# Add specific task files for webserver role
+# Copy template files to their respective directories
+echo -e "${GREEN}Copying template files to their directories...${NC}"
+
+# Copy roles main files
 echo "---
-# Nginx installation tasks" > roles/webserver/tasks/nginx.yml
-echo "---
-# Apache installation tasks" > roles/webserver/tasks/apache.yml
+# php role main tasks file
+- name: Include installation tasks
+  ansible.builtin.include_tasks: install.yml
 
-# Create base configuration files
-echo "---
-# Main playbook for Laravel 11 environment setup
+- name: Include configuration tasks
+  ansible.builtin.include_tasks: configure.yml
+  when: configure_php | default(true) | bool" > roles/php/tasks/main.yml
 
-- name: Deploy Laravel 11 Environment
-  hosts: all
-  become: true
-  vars_files:
-    - vars/versions.yml
-  
-  pre_tasks:
-    - name: Update package cache
-      ansible.builtin.package:
-        update_cache: true
-      when: update_cache | default(true) | bool
-  
-  roles:
-    - role: php
-      tags: [php]
-    
-    - role: composer
-      tags: [composer]
-    
-    - role: nodejs
-      tags: [nodejs]
-    
-    - role: mysql
-      tags: [database, mysql]
-      when: db_engine == 'mysql'
-    
-    - role: mariadb
-      tags: [database, mariadb]
-      when: db_engine == 'mariadb'
-    
-    - role: postgresql
-      tags: [database, postgresql]
-      when: db_engine == 'postgresql'
-    
-    - role: redis
-      tags: [redis]
-      when: enable_redis | default(false) | bool
-    
-    - role: webserver
-      tags: [webserver]" > site.yml
+# Repeat for other roles...
+for role in "${ROLES[@]}"; do
+    if [ "$role" != "php" ]; then
+        echo "---
+# $role role main tasks file
+- name: Include installation tasks
+  ansible.builtin.include_tasks: install.yml
 
-# Create inventory file
-echo "---
-# Inventory file
+- name: Include configuration tasks
+  ansible.builtin.include_tasks: configure.yml
+  when: configure_${role} | default(true) | bool" > roles/$role/tasks/main.yml
+    fi
+done
 
-all:
-  children:
-    webservers:
-      hosts:
-        webserver1:
-          ansible_host: 192.168.1.10
-    
-    # Example for multiple environments
-    staging:
-      hosts:
-        staging_server:
-          ansible_host: 192.168.1.20
-    
-    production:
-      hosts:
-        production_server:
-          ansible_host: 192.168.1.30" > inventory/hosts.yml
+# Copy the PHP role task files
+cp php-role roles/php/tasks/install.yml
+cp php-configure roles/php/tasks/configure.yml
+cp php-defaults roles/php/defaults/main.yml
+cp php-debian-vars roles/php/vars/debian.yml
+cp php-redhat-vars roles/php/vars/redhat.yml
+cp php-handlers roles/php/handlers/main.yml
 
-# Create group_vars files
-echo "---
-# Variables for all hosts
+# Copy the template files
+cp php-timezone-template roles/php/templates/php-timezone.ini.j2
+cp php-memory-template roles/php/templates/php-memory.ini.j2
+cp php-uploads-template roles/php/templates/php-uploads.ini.j2
+cp php-execution-template roles/php/templates/php-execution.ini.j2
+cp php-opcache-template roles/php/templates/php-opcache.ini.j2
 
-# PHP configuration
-php_version: \"{{ laravel_versions[laravel_version].php.version }}\"
-php_extensions: \"{{ laravel_versions[laravel_version].php.extensions }}\"
+# Copy the Composer role files
+cp composer-install roles/composer/tasks/install.yml
+cp composer-configure roles/composer/tasks/configure.yml
+cp composer-defaults roles/composer/defaults/main.yml
 
-# Composer configuration
-composer_version: \"{{ laravel_versions[laravel_version].composer.version }}\"
+# Copy the Node.js role files
+cp nodejs-install roles/nodejs/tasks/install.yml
+cp nodejs-configure roles/nodejs/tasks/configure.yml
+cp nodejs-defaults roles/nodejs/defaults/main.yml
 
-# Node.js configuration
-nodejs_version: \"{{ laravel_versions[laravel_version].nodejs.version }}\"
+# Copy the MySQL role files
+cp mysql-install roles/mysql/tasks/install.yml
+cp mysql-configure roles/mysql/tasks/configure.yml
+cp mysql-defaults roles/mysql/defaults/main.yml
+cp mysql-debian-vars roles/mysql/vars/debian.yml
+cp mysql-redhat-vars roles/mysql/vars/redhat.yml
+cp mysql-handlers roles/mysql/handlers/main.yml
+cp mysql-root-cnf-template roles/mysql/templates/root-my.cnf.j2
+cp mysql-cnf-template roles/mysql/templates/my.cnf.j2
 
-# Database configuration
-db_engine: mysql  # Options: mysql, mariadb, postgresql
+# Copy the MariaDB role files
+cp mariadb-install roles/mariadb/tasks/install.yml
+cp mariadb-configure roles/mariadb/tasks/configure.yml
+cp mariadb-defaults roles/mariadb/defaults/main.yml
+cp mariadb-debian-vars roles/mariadb/vars/debian.yml
+cp mariadb-redhat-vars roles/mariadb/vars/redhat.yml
+cp mariadb-handlers roles/mariadb/handlers/main.yml
+cp mariadb-root-cnf-template roles/mariadb/templates/root-my.cnf.j2
+cp mariadb-cnf-template roles/mariadb/templates/mariadb.cnf.j2
+cp mariadb-repo-template roles/mariadb/templates/mariadb.repo.j2
 
-# Redis configuration
-enable_redis: false
+# Copy the PostgreSQL role files
+cp postgresql-install roles/postgresql/tasks/install.yml
+cp postgresql-configure roles/postgresql/tasks/configure.yml
+cp postgresql-defaults roles/postgresql/defaults/main.yml
+cp postgresql-debian-vars roles/postgresql/vars/debian.yml
+cp postgresql-redhat-vars roles/postgresql/vars/redhat.yml
+cp postgresql-handlers roles/postgresql/handlers/main.yml
+cp postgresql-conf-template roles/postgresql/templates/postgresql.conf.j2
+cp postgresql-hba-template roles/postgresql/templates/pg_hba.conf.j2
 
-# Webserver configuration
-webserver_type: nginx  # Options: nginx, apache
+# Copy the Redis role files
+cp redis-install roles/redis/tasks/install.yml
+cp redis-configure roles/redis/tasks/configure.yml
+cp redis-defaults roles/redis/defaults/main.yml
+cp redis-debian-vars roles/redis/vars/debian.yml
+cp redis-redhat-vars roles/redis/vars/redhat.yml
+cp redis-handlers roles/redis/handlers/main.yml
+cp redis-conf-template roles/redis/templates/redis.conf.j2
 
-# Laravel version
-laravel_version: \"11\"" > group_vars/all.yml
+# Copy the Webserver role files
+cp webserver-install roles/webserver/tasks/install.yml
+cp webserver-configure roles/webserver/tasks/configure.yml
+cp webserver-nginx-install roles/webserver/tasks/nginx.yml
+cp webserver-nginx-configure roles/webserver/tasks/nginx_configure.yml
+cp webserver-apache-install roles/webserver/tasks/apache.yml
+cp webserver-apache-configure roles/webserver/tasks/apache_configure.yml
+cp webserver-defaults roles/webserver/defaults/main.yml
+cp webserver-debian-vars roles/webserver/vars/debian.yml
+cp webserver-redhat-vars roles/webserver/vars/redhat.yml
+cp webserver-handlers roles/webserver/handlers/main.yml
+cp nginx-laravel-template roles/webserver/templates/nginx/laravel.conf.j2
+cp nginx-conf-template roles/webserver/templates/nginx/nginx.conf.j2
+cp apache-laravel-template roles/webserver/templates/apache/laravel.conf.j2
+cp apache-conf-template roles/webserver/templates/apache/apache2.conf.j2
 
-# Create versions.yml
-echo "---
-# Laravel version requirements mapping
-# This file maps Laravel versions to their required dependencies
+# Copy main playbook files
+cp site-yml site.yml
+cp deploy-laravel-yml deploy-laravel.yml
+cp laravel-maintenance-yml laravel-maintenance.yml
+cp security-hardening-yml security-hardening.yml
 
-laravel_versions:
-  \"11\":
-    php:
-      version: \"8.2\"  # Laravel 11 requires PHP 8.2+
-      extensions:
-        - bcmath
-        - ctype
-        - curl
-        - dom
-        - fileinfo
-        - filter
-        - json
-        - mbstring
-        - openssl
-        - pcre
-        - pdo
-        - pdo_mysql
-        - session
-        - tokenizer
-        - xml
-        - zip
-    composer:
-      version: \"latest\"  # Always use the latest Composer version
-    nodejs:
-      version: \"20.x\"    # Using LTS version for Node.js
-    databases:
-      mysql:
-        version: \"8.0\"
-      mariadb:
-        version: \"10.11\"  # MariaDB 10.11 LTS
-      postgresql:
-        version: \"15\"
-    redis:
-      version: \"7.0\"  # Latest stable Redis version" > vars/versions.yml
+# Copy configuration files
+cp env-template templates/env.j2
+cp 20auto-upgrades-template templates/20auto-upgrades.j2
+cp nginx-security-headers-template templates/nginx-security-headers.j2
 
-# Create README.md
-echo "# Ansible Laravel 11 Deployment
+# Copy vars files
+cp versions-yml vars/versions.yml
+cp all-yml group_vars/all.yml
 
-This Ansible project automates the deployment of all dependencies required to run a Laravel 11 environment.
+# Copy inventory file
+cp inventory-hosts inventory/hosts.yml
 
-## Project Structure
+# Copy documentation files
+cp readme-md README.md
+cp deployment-guide DEPLOYMENT_GUIDE.md
 
-\`\`\`
-ansible-laravel/
-├── site.yml                # Main playbook
-├── README.md               # Project documentation
-├── inventory/              # Host inventory
-│   └── hosts.yml           # Inventory file
-├── group_vars/             # Group variables
-│   └── all.yml             # Common variables
-├── vars/                   # Global variables
-│   └── versions.yml        # Laravel version dependency mapping
-└── roles/                  # Ansible roles
-    ├── php/                # PHP installation
-    ├── composer/           # Composer installation
-    ├── nodejs/             # Node.js installation
-    ├── mysql/              # MySQL installation
-    ├── mariadb/            # MariaDB installation
-    ├── postgresql/         # PostgreSQL installation
-    ├── redis/              # Redis installation
-    └── webserver/          # Web server installation (NGINX/Apache)
-\`\`\`
-
-## Requirements
-
-- Ansible 2.12 or higher
-- SSH access to target servers
-- Sudo privileges on target servers
-
-## Supported Distributions
-
-- RHEL-like 8 & 9 (AlmaLinux, RockyLinux, OracleLinux)
-- Debian-like 11 & 12
-- Ubuntu 20.04, 22.04, 24.04
-
-## Variables
-
-The main configuration variables are set in \`group_vars/all.yml\`:
-
-- \`laravel_version\`: Laravel version to deploy (default: 11)
-- \`db_engine\`: Database engine to use (options: mysql, mariadb, postgresql)
-- \`enable_redis\`: Whether to install Redis (default: false)
-- \`webserver_type\`: Web server to install (options: nginx, apache)
-
-## Usage
-
-1. Update the inventory file with your server information:
-   
-   \`\`\`yaml
-   # inventory/hosts.yml
-   all:
-     children:
-       webservers:
-         hosts:
-           webserver1:
-             ansible_host: 192.168.1.10
-   \`\`\`
-
-2. Customize the variables in \`group_vars/all.yml\` if needed.
-
-3. Run the playbook:
-   
-   \`\`\`bash
-   ansible-playbook -i inventory/hosts.yml site.yml
-   \`\`\`
-
-4. To run with specific tags:
-   
-   \`\`\`bash
-   ansible-playbook -i inventory/hosts.yml site.yml --tags php,webserver
-   \`\`\`
-
-## Customizing the Stack
-
-### Database Engine
-
-Set the \`db_engine\` variable to choose your database:
-
-\`\`\`yaml
-# In group_vars/all.yml or via command line
-db_engine: postgresql  # Options: mysql, mariadb, postgresql
-\`\`\`
-
-### Redis
-
-Enable Redis installation:
-
-\`\`\`yaml
-# In group_vars/all.yml or via command line
-enable_redis: true
-\`\`\`
-
-### Web Server
-
-Choose between NGINX and Apache:
-
-\`\`\`yaml
-# In group_vars/all.yml or via command line
-webserver_type: apache  # Options: nginx, apache
-\`\`\`
-
-## GitHub Actions Workflow Example
-
-Here's a basic GitHub Actions workflow example for CI:
-
-\`\`\`yaml
-name: Ansible Lint
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  ansible-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ansible ansible-lint
-          
-      - name: Lint Ansible Playbook
-        run: |
-          ansible-lint
-\`\`\`
-
-## License
-
-MIT License
-" > README.md
-
-# Create a GitHub Actions workflow file
+# Create GitHub Actions workflow
 mkdir -p .github/workflows
-echo "name: Ansible Lint
+echo 'name: Ansible Lint
 
 on:
   push:
@@ -358,7 +173,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: "3.10"
           
       - name: Install dependencies
         run: |
@@ -368,17 +183,45 @@ jobs:
       - name: Lint Ansible Playbook
         run: |
           ansible-lint
-" > .github/workflows/ansible-lint.yml
+' > .github/workflows/ansible-lint.yml
 
-# Make script executable
-chmod +x roles/*/tasks/*.yml
+# Create .gitignore
+echo '# Ansible specific files
+*.retry
+*.pyc
+__pycache__/
+.cache/
 
-echo -e "${GREEN}Project structure created successfully!${NC}"
+# Ansible Vault passwords
+.vault_pass
+.vault_pass.txt
+*.vault
+
+# Local inventory files with sensitive data
+/inventory/local.yml
+
+# Runtime and temporary files
+*.log
+*.tmp
+*.swp
+*~
+
+# Editor and IDE files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Credentials and secrets
+/group_vars/*/vault.yml
+/host_vars/*/vault.yml
+' > .gitignore
+
+echo -e "${GREEN}Project structure organized successfully!${NC}"
 echo -e "${YELLOW}Next steps:${NC}"
-echo "1. Implement task files for each role"
+echo "1. Review the generated files and adjust as needed"
 echo "2. Update the inventory with your servers"
-echo "3. Customize variables as needed"
+echo "3. Customize variables in group_vars/all.yml"
 echo "4. Run ansible-lint to validate your playbook"
+echo "5. Deploy with: ansible-playbook -i inventory/hosts.yml site.yml"
 echo -e "${GREEN}Done!${NC}"
-
-cd ..

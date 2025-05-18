@@ -1,0 +1,127 @@
+---
+# Laravel maintenance tasks playbook
+
+- name: Laravel Maintenance Tasks
+  hosts: all
+  become: true
+  become_user: "{{ webserver_user | default('www-data') }}"
+  vars:
+    laravel_root_dir: "{{ webserver_laravel_root | default('/var/www/laravel') }}"
+    maintenance_task: "status"  # Default task is status check
+    
+  tasks:
+    - name: Check if Laravel application exists
+      ansible.builtin.stat:
+        path: "{{ laravel_root_dir }}/artisan"
+      register: artisan_file
+      become: false
+      
+    - name: Fail if Laravel application not found
+      ansible.builtin.fail:
+        msg: "Laravel application not found at {{ laravel_root_dir }}"
+      when: not artisan_file.stat.exists
+      
+    # Maintenance mode tasks
+    - name: Put Laravel application in maintenance mode
+      ansible.builtin.command:
+        cmd: php artisan down --message="The application is being updated. Please try again in a few minutes." --retry=60
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "down"
+      
+    - name: Take Laravel application out of maintenance mode
+      ansible.builtin.command:
+        cmd: php artisan up
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "up"
+      
+    - name: Check Laravel maintenance status
+      ansible.builtin.command:
+        cmd: php artisan is:down
+        chdir: "{{ laravel_root_dir }}"
+      register: maintenance_status
+      changed_when: false
+      when: maintenance_task == "status"
+      
+    - name: Display maintenance status
+      ansible.builtin.debug:
+        msg: "Application is {{ 'in maintenance mode' if maintenance_status.rc == 0 else 'not in maintenance mode' }}"
+      when: maintenance_task == "status"
+      
+    # Cache tasks
+    - name: Clear Laravel cache
+      ansible.builtin.command:
+        cmd: php artisan optimize:clear
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "clear-cache"
+      
+    - name: Rebuild Laravel cache
+      ansible.builtin.command:
+        cmd: php artisan optimize
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "cache"
+      
+    # Database tasks
+    - name: Run Laravel migrations
+      ansible.builtin.command:
+        cmd: php artisan migrate --force
+        chdir: "{{ laravel_root_dir }}"
+      register: migration_output
+      changed_when: "'Nothing to migrate' not in migration_output.stdout"
+      when: maintenance_task == "migrate"
+      
+    - name: Run Laravel database seeder
+      ansible.builtin.command:
+        cmd: php artisan db:seed --force
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "seed"
+      
+    - name: Fresh migrations (WARNING: destructive)
+      ansible.builtin.command:
+        cmd: php artisan migrate:fresh --force
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "migrate-fresh"
+      
+    # Queue and scheduling tasks
+    - name: Restart queue workers
+      ansible.builtin.command:
+        cmd: php artisan queue:restart
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "restart-queue"
+      
+    - name: Run scheduled tasks
+      ansible.builtin.command:
+        cmd: php artisan schedule:run
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "schedule-run"
+      
+    # Configuration and view tasks
+    - name: Clear and cache config
+      ansible.builtin.command:
+        cmd: php artisan config:cache
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "config-cache"
+      
+    - name: Clear and cache routes
+      ansible.builtin.command:
+        cmd: php artisan route:cache
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "route-cache"
+      
+    - name: Clear and cache views
+      ansible.builtin.command:
+        cmd: php artisan view:cache
+        chdir: "{{ laravel_root_dir }}"
+      when: maintenance_task == "view-cache"
+      
+    - name: Display Laravel version
+      ansible.builtin.command:
+        cmd: php artisan --version
+        chdir: "{{ laravel_root_dir }}"
+      register: laravel_version
+      changed_when: false
+      when: maintenance_task == "version"
+      
+    - name: Show Laravel version
+      ansible.builtin.debug:
+        msg: "{{ laravel_version.stdout }}"
+      when: maintenance_task == "version"

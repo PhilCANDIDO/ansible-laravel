@@ -1,2 +1,8 @@
 ---
-# Handlers for redis role
+# roles/redis/handlers/main.yml
+# Handlers for Redis role
+
+- name: Restart Redis
+  ansible.builtin.service:
+    name: "{{ redis_service }}"
+    state: restarted

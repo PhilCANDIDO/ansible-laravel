@@ -12,6 +12,29 @@
       ansible.builtin.package:
         update_cache: true
       when: update_cache | default(true) | bool
+      tags: [always]
+      
+    - name: Install common packages
+      ansible.builtin.package:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - curl
+        - git
+        - unzip
+        - acl
+        - python3-pip
+        - python3-setuptools
+      tags: [common]
+      
+    - name: Install Python dependencies for Ansible modules
+      ansible.builtin.pip:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - PyMySQL
+        - psycopg2-binary
+      tags: [common]
   
   roles:
     - role: php
@@ -41,3 +64,35 @@
     
     - role: webserver
       tags: [webserver]
+  
+  post_tasks:
+    - name: Display Laravel environment setup summary
+      ansible.builtin.debug:
+        msg: |
+          Laravel {{ laravel_version }} environment has been set up successfully!
+          
+          Components installed:
+          - PHP {{ php_version }}
+          - Composer
+          - Node.js {{ nodejs_version }}
+          {% if db_engine == 'mysql' %}
+          - MySQL {{ mysql_version }}
+          - Database: {{ mysql_db_name }}
+          - User: {{ mysql_db_user }}
+          {% elif db_engine == 'mariadb' %}
+          - MariaDB {{ mariadb_version }}
+          - Database: {{ mariadb_db_name }}
+          - User: {{ mariadb_db_user }}
+          {% elif db_engine == 'postgresql' %}
+          - PostgreSQL {{ postgresql_version }}
+          - Database: {{ postgresql_db_name }}
+          - User: {{ postgresql_db_user }}
+          {% endif %}
+          {% if enable_redis | default(false) | bool %}
+          - Redis {{ redis_version }}
+          {% endif %}
+          - {{ webserver_type | capitalize }} web server
+          - Server name: {{ webserver_server_name }}
+          
+          Laravel root directory: {{ webserver_laravel_root }}
+      tags: [always]

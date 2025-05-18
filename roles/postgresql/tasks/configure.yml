@@ -1,2 +1,72 @@
 ---
-# postgresql configuration tasks
+# roles/postgresql/tasks/configure.yml
+# PostgreSQL configuration tasks
+
+- name: (configure) Set up PostgreSQL configuration
+  ansible.builtin.template:
+    src: postgresql.conf.j2
+    dest: "{{ postgresql_config_path }}/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: '0644'
+  notify: Restart PostgreSQL
+  tags: [postgresql, configure]
+
+- name: (configure) Set up PostgreSQL client authentication
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "{{ postgresql_config_path }}/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: '0640'
+  notify: Restart PostgreSQL
+  tags: [postgresql, configure]
+
+- name: (configure) Create PostgreSQL database for Laravel if specified
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ postgresql_db_name }}"
+    encoding: "{{ postgresql_db_encoding }}"
+    lc_collate: "{{ postgresql_db_lc_collate }}"
+    lc_ctype: "{{ postgresql_db_lc_ctype }}"
+    state: present
+  when: 
+    - postgresql_db_name is defined
+    - postgresql_db_name != ''
+  tags: [postgresql, configure]
+
+- name: (configure) Create PostgreSQL user for Laravel if specified
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ postgresql_db_user }}"
+    password: "{{ postgresql_db_password }}"
+    db: "{{ postgresql_db_name }}"
+    priv: "ALL"
+    state: present
+  when: 
+    - postgresql_db_name is defined 
+    - postgresql_db_name != ''
+    - postgresql_db_user is defined
+    - postgresql_db_user != ''
+    - postgresql_db_password is defined
+    - postgresql_db_password != ''
+  no_log: true
+  tags: [postgresql, configure]
+
+- name: (configure) Grant privileges to Laravel user
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_privs:
+    db: "{{ postgresql_db_name }}"
+    role: "{{ postgresql_db_user }}"
+    objs: ALL_IN_SCHEMA
+    type: table
+    privs: ALL
+  when: 
+    - postgresql_db_name is defined 
+    - postgresql_db_name != ''
+    - postgresql_db_user is defined
+    - postgresql_db_user != ''
+  tags: [postgresql, configure]

@@ -1,0 +1,172 @@
+---
+# Server security hardening playbook for Laravel environment
+
+- name: Harden Server Security
+  hosts: all
+  become: true
+  vars:
+    security_ssh_port: 22
+    security_allowed_ssh_users: ["ubuntu", "admin"]
+    security_ufw_allowed_ports:
+      - { port: "{{ security_ssh_port }}", proto: "tcp" }
+      - { port: 80, proto: "tcp" }
+      - { port: 443, proto: "tcp" }
+    security_fail2ban_enabled: true
+    security_automatic_updates: true
+  
+  tasks:
+    # Update system packages
+    - name: Update package cache and upgrade all packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+      when: ansible_os_family == "Debian"
+      
+    # Install essential security packages
+    - name: Install security-related packages
+      ansible.builtin.package:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - ufw
+        - fail2ban
+        - unattended-upgrades
+        - acl
+        - libpam-pwquality
+        
+    # Secure shared memory
+    - name: Add noexec to /run/shm
+      ansible.builtin.mount:
+        name: /run/shm
+        src: tmpfs
+        fstype: tmpfs
+        opts: defaults,noexec,nosuid,nodev
+        state: mounted
+      when: ansible_os_family == "Debian"
+      
+    # Configure automatic security updates
+    - name: Configure unattended-upgrades
+      ansible.builtin.template:
+        src: 20auto-upgrades.j2
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        owner: root
+        group: root
+        mode: '0644'
+      when: 
+        - ansible_os_family == "Debian"
+        - security_automatic_updates | bool
+        
+    # Configure SSH server
+    - name: Secure SSH server configuration
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+        - { regexp: '^#?PasswordAuthentication', line: 'PasswordAuthentication no' }
+        - { regexp: '^#?X11Forwarding', line: 'X11Forwarding no' }
+        - { regexp: '^#?MaxAuthTries', line: 'MaxAuthTries 5' }
+        - { regexp: '^#?ClientAliveInterval', line: 'ClientAliveInterval 300' }
+        - { regexp: '^#?ClientAliveCountMax', line: 'ClientAliveCountMax 0' }
+        - { regexp: '^#?UsePAM', line: 'UsePAM yes' }
+        - { regexp: '^#?Port', line: 'Port {{ security_ssh_port }}' }
+      notify: Restart SSH
+      
+    - name: Configure allowed SSH users
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?AllowUsers'
+        line: 'AllowUsers {{ security_allowed_ssh_users | join(" ") }}'
+        state: present
+      when: security_allowed_ssh_users | length > 0
+      notify: Restart SSH
+      
+    # Configure firewall (UFW)
+    - name: Set UFW default policy
+      ansible.builtin.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+      
+    - name: Allow specified UFW ports
+      ansible.builtin.ufw:
+        rule: allow
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+      loop: "{{ security_ufw_allowed_ports }}"
+      
+    # Configure Fail2Ban
+    - name: Ensure Fail2Ban is running and enabled at boot
+      ansible.builtin.service:
+        name: fail2ban
+        state: started
+        enabled: true
+      when: security_fail2ban_enabled | bool
+      
+    - name: Configure Fail2Ban for SSH
+      ansible.builtin.copy:
+        content: |
+          [sshd]
+          enabled = true
+          port = {{ security_ssh_port }}
+          filter = sshd
+          logpath = /var/log/auth.log
+          maxretry = 5
+          bantime = 3600
+        dest: /etc/fail2ban/jail.d/ssh.local
+        owner: root
+        group: root
+        mode: '0644'
+      when: security_fail2ban_enabled | bool
+      notify: Restart Fail2Ban
+      
+    # Secure web server
+    - name: Secure Nginx (if installed)
+      ansible.builtin.template:
+        src: nginx-security-headers.j2
+        dest: /etc/nginx/conf.d/security-headers.conf
+        owner: root
+        group: root
+        mode: '0644'
+      when: 
+        - webserver_type is defined
+        - webserver_type == "nginx"
+      notify: Restart NGINX
+      
+    - name: Secure PHP (restrict functions)
+      ansible.builtin.lineinfile:
+        path: "/etc/php/{{ php_version }}/fpm/conf.d/99-security.ini"
+        line: "disable_functions = exec,passthru,shell_exec,system,proc_open,popen,curl_exec,curl_multi_exec,parse_ini_file,show_source"
+        create: true
+        owner: root
+        group: root
+        mode: '0644'
+      when: php_version is defined
+      notify: Restart PHP-FPM
+      
+  handlers:
+    - name: Restart SSH
+      ansible.builtin.service:
+        name: ssh
+        state: restarted
+        
+    - name: Restart Fail2Ban
+      ansible.builtin.service:
+        name: fail2ban
+        state: restarted
+        
+    - name: Restart NGINX
+      ansible.builtin.service:
+        name: "{{ nginx_service }}"
+        state: restarted
+      when: 
+        - webserver_type is defined
+        - webserver_type == "nginx"
+        
+    - name: Restart PHP-FPM
+      ansible.builtin.service:
+        name: "php{{ php_version }}-fpm"
+        state: restarted
+      when: php_version is defined

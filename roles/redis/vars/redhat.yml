@@ -1,0 +1,11 @@
+---
+# roles/redis/vars/redhat.yml
+# Redis variables for RHEL-based distributions
+
+redis_packages:
+  - "redis"
+
+redis_user: redis
+redis_group: redis
+redis_service: redis
+redis_conf_path: /etc/redis.conf

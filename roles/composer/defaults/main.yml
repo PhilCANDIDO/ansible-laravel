@@ -1,2 +1,26 @@
 ---
+# roles/composer/defaults/main.yml
 # Default variables for composer role
+
+# Composer version
+composer_version: "latest"
+
+# Composer home directory (default is ~/.composer)
+composer_home_dir: "{{ '~/.composer' | expanduser }}"
+
+# GitHub OAuth token (speeds up downloads)
+# composer_github_oauth_token: your-token-here
+
+# Global Composer configurations
+composer_global_configs: []
+  # Examples:
+  # - key: "process-timeout"
+  #   value: 2000
+  # - key: "use-github-api"
+  #   value: false
+
+# Global Composer packages to install
+composer_global_packages: []
+  # Examples:
+  # - "laravel/installer"
+  # - "laravel/pint"

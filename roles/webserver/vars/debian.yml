@@ -1,0 +1,36 @@
+---
+# roles/webserver/vars/debian.yml
+# Webserver variables for Debian-based distributions
+
+# NGINX
+nginx_packages:
+  - "nginx"
+nginx_service: "nginx"
+nginx_user: "www-data"
+nginx_group: "www-data"
+nginx_conf_path: "/etc/nginx/nginx.conf"
+nginx_vhost_dir: "/etc/nginx/sites-available"
+nginx_enabled_vhost_dir: "/etc/nginx/sites-enabled"
+nginx_default_vhost_path: "/etc/nginx/sites-enabled/default"
+
+# Apache
+apache_packages:
+  - "apache2"
+  - "libapache2-mod-fcgid"
+apache_service: "apache2"
+apache_user: "www-data"
+apache_group: "www-data"
+apache_conf_path: "/etc/apache2/apache2.conf"
+apache_vhost_dir: "/etc/apache2/sites-available"
+apache_enabled_vhost_dir: "/etc/apache2/sites-enabled"
+apache_default_vhost_path: "/etc/apache2/sites-enabled/000-default.conf"
+apache_modules:
+  - "rewrite"
+  - "proxy"
+  - "proxy_fcgi"
+  - "headers"
+  - "ssl"
+
+# Common
+webserver_user: "{{ (webserver_type == 'nginx') | ternary(nginx_user, apache_user) }}"
+webserver_group: "{{ (webserver_type == 'nginx') | ternary(nginx_group, apache_group) }}"

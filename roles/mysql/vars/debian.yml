@@ -1,0 +1,11 @@
+---
+# roles/mysql/vars/debian.yml
+# MySQL variables for Debian-based distributions
+
+mysql_packages:
+  - "mysql-server"
+  - "mysql-client"
+  - "python3-mysqldb"  # For Ansible MySQL modules
+
+mysql_service: "mysql"
+mysql_config_file: "/etc/mysql/mysql.conf.d/mysqld.cnf"

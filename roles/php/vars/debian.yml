@@ -1,0 +1,27 @@
+---
+# roles/php/vars/debian.yml
+# PHP variables for Debian-based distributions
+
+php_packages:
+  - "php{{ php_version }}"
+  - "php{{ php_version }}-fpm"
+  - "php{{ php_version }}-cli"
+  - "php{{ php_version }}-common"
+  - "php{{ php_version }}-bcmath"
+  - "php{{ php_version }}-curl"
+  - "php{{ php_version }}-xml"
+  - "php{{ php_version }}-mbstring"
+  - "php{{ php_version }}-zip"
+  - "php{{ php_version }}-mysql"
+  - "php{{ php_version }}-pgsql"
+  - "php{{ php_version }}-gd"
+  - "php{{ php_version }}-intl"
+  - "php{{ php_version }}-opcache"
+  - "php{{ php_version }}-sqlite3"
+  - "php{{ php_version }}-tokenizer"
+  - "php{{ php_version }}-json"
+
+php_conf_dir: "/etc/php/{{ php_version }}/mods-available"
+php_fpm_service: "php{{ php_version }}-fpm"
+php_fpm_conf_dir: "/etc/php/{{ php_version }}/fpm/pool.d"
+php_fpm_pool_conf: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"

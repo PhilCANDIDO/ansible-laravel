@@ -1,2 +1,44 @@
 ---
+# roles/webserver/tasks/apache.yml
 # Apache installation tasks
+
+# Debian/Ubuntu
+- name: (apache) Install Apache (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ apache_packages }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: [webserver, apache, install]
+
+# RHEL/CentOS
+- name: (apache) Install Apache (RHEL/CentOS)
+  ansible.builtin.package:
+    name: "{{ apache_packages }}"
+    state: present
+  when: ansible_os_family == 'RedHat'
+  tags: [webserver, apache, install]
+
+# Common tasks
+- name: (apache) Ensure Apache service is running and enabled
+  ansible.builtin.service:
+    name: "{{ apache_service }}"
+    state: started
+    enabled: true
+  tags: [webserver, apache, install]
+
+- name: (apache) Enable required Apache modules
+  community.general.apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ apache_modules }}"
+  when: ansible_os_family == 'Debian'
+  notify: Restart Apache
+  tags: [webserver, apache, install]
+
+- name: (apache) Remove default Apache virtual host
+  ansible.builtin.file:
+    path: "{{ apache_default_vhost_path }}"
+    state: absent
+  notify: Restart Apache
+  tags: [webserver, apache, install]

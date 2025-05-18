@@ -1,0 +1,154 @@
+---
+# Deploy a Laravel application to servers
+
+- name: Deploy Laravel Application
+  hosts: all
+  become: true
+  vars:
+    # Laravel deployment settings
+    laravel_deploy_repo: "https://github.com/yourusername/your-laravel-app.git"
+    laravel_deploy_branch: "main"
+    laravel_deploy_dir: "{{ webserver_laravel_root }}"
+    laravel_app_env: "production"
+    laravel_app_debug: "false"
+    laravel_app_url: "https://{{ webserver_server_name }}"
+    
+    # Database connection
+    laravel_app_db_connection: "{{ db_engine }}"
+    laravel_app_db_host: "127.0.0.1"
+    laravel_app_db_port: "{{ db_engine == 'postgresql' | ternary('5432', '3306') }}"
+    laravel_app_db_database: "{{ db_engine == 'mysql' | ternary(mysql_db_name, (db_engine == 'mariadb' | ternary(mariadb_db_name, postgresql_db_name))) }}"
+    laravel_app_db_username: "{{ db_engine == 'mysql' | ternary(mysql_db_user, (db_engine == 'mariadb' | ternary(mariadb_db_user, postgresql_db_user))) }}"
+    laravel_app_db_password: "{{ db_engine == 'mysql' | ternary(mysql_db_password, (db_engine == 'mariadb' | ternary(mariadb_db_password, postgresql_db_password))) }}"
+    
+    # Redis configuration (if enabled)
+    laravel_app_redis_host: "{{ enable_redis | ternary('127.0.0.1', 'null') }}"
+    laravel_app_redis_password: "{{ redis_requirepass | default('null') }}"
+    laravel_app_redis_port: "{{ enable_redis | ternary('6379', 'null') }}"
+    
+    # Laravel storage directories
+    laravel_storage_dirs:
+      - "bootstrap/cache"
+      - "storage/app"
+      - "storage/app/public"
+      - "storage/framework"
+      - "storage/framework/cache"
+      - "storage/framework/sessions"
+      - "storage/framework/views"
+      - "storage/logs"
+
+  tasks:
+    - name: Ensure Git is installed
+      ansible.builtin.package:
+        name: git
+        state: present
+      
+    - name: Clone or update Laravel repository
+      ansible.builtin.git:
+        repo: "{{ laravel_deploy_repo }}"
+        dest: "{{ laravel_deploy_dir }}"
+        version: "{{ laravel_deploy_branch }}"
+        force: true
+      become: true
+      become_user: "{{ webserver_user }}"
+      
+    - name: Create Laravel storage directories
+      ansible.builtin.file:
+        path: "{{ laravel_deploy_dir }}/{{ item }}"
+        state: directory
+        owner: "{{ webserver_user }}"
+        group: "{{ webserver_group }}"
+        mode: '0775'
+      loop: "{{ laravel_storage_dirs }}"
+    
+    - name: Create .env file from .env.example
+      ansible.builtin.template:
+        src: env.j2
+        dest: "{{ laravel_deploy_dir }}/.env"
+        owner: "{{ webserver_user }}"
+        group: "{{ webserver_group }}"
+        mode: '0640'
+      notify: Cache Laravel configuration
+    
+    - name: Install Composer dependencies
+      ansible.builtin.command:
+        cmd: composer install --no-dev --optimize-autoloader --no-interaction
+        chdir: "{{ laravel_deploy_dir }}"
+      become: true
+      become_user: "{{ webserver_user }}"
+      
+    - name: Generate Laravel application key
+      ansible.builtin.command:
+        cmd: php artisan key:generate --force
+        chdir: "{{ laravel_deploy_dir }}"
+      become: true
+      become_user: "{{ webserver_user }}"
+      register: key_generate
+      changed_when: "'Application key set successfully' in key_generate.stdout"
+      
+    - name: Run database migrations
+      ansible.builtin.command:
+        cmd: php artisan migrate --force
+        chdir: "{{ laravel_deploy_dir }}"
+      become: true
+      become_user: "{{ webserver_user }}"
+      register: migrations
+      changed_when: "'Nothing to migrate' not in migrations.stdout"
+      
+    - name: Create storage link
+      ansible.builtin.command:
+        cmd: php artisan storage:link
+        chdir: "{{ laravel_deploy_dir }}"
+      become: true
+      become_user: "{{ webserver_user }}"
+      args:
+        creates: "{{ laravel_deploy_dir }}/public/storage"
+    
+    - name: Install NPM dependencies
+      ansible.builtin.command:
+        cmd: npm ci
+        chdir: "{{ laravel_deploy_dir }}"
+      become: true
+      become_user: "{{ webserver_user }}"
+      
+    - name: Build assets
+      ansible.builtin.command:
+        cmd: npm run build
+        chdir: "{{ laravel_deploy_dir }}"
+      become: true
+      become_user: "{{ webserver_user }}"
+      
+    - name: Optimize Laravel
+      ansible.builtin.command:
+        cmd: php artisan optimize
+        chdir: "{{ laravel_deploy_dir }}"
+      become: true
+      become_user: "{{ webserver_user }}"
+    
+    - name: Set correct permissions for Laravel directories
+      ansible.builtin.file:
+        path: "{{ laravel_deploy_dir }}"
+        owner: "{{ webserver_user }}"
+        group: "{{ webserver_group }}"
+        mode: '0755'
+        recurse: true
+      
+    - name: Ensure storage and bootstrap/cache directories are writable
+      ansible.builtin.file:
+        path: "{{ laravel_deploy_dir }}/{{ item }}"
+        state: directory
+        owner: "{{ webserver_user }}"
+        group: "{{ webserver_group }}"
+        mode: '0775'
+        recurse: true
+      loop:
+        - "storage"
+        - "bootstrap/cache"
+
+  handlers:
+    - name: Cache Laravel configuration
+      ansible.builtin.command:
+        cmd: php artisan config:cache
+        chdir: "{{ laravel_deploy_dir }}"
+      become: true
+      become_user: "{{ webserver_user }}"

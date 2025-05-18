@@ -13,6 +13,7 @@ laravel_versions:
         - dom
         - fileinfo
         - filter
+        - hash
         - json
         - mbstring
         - openssl
@@ -36,3 +37,37 @@ laravel_versions:
         version: "15"
     redis:
       version: "7.0"  # Latest stable Redis version
+  
+  "10":
+    php:
+      version: "8.1"  # Laravel 10 requires PHP 8.1+
+      extensions:
+        - bcmath
+        - ctype
+        - curl
+        - dom
+        - fileinfo
+        - filter
+        - json
+        - mbstring
+        - openssl
+        - pcre
+        - pdo
+        - pdo_mysql
+        - session
+        - tokenizer
+        - xml
+        - zip
+    composer:
+      version: "latest"
+    nodejs:
+      version: "18.x"
+    databases:
+      mysql:
+        version: "8.0"
+      mariadb:
+        version: "10.10"
+      postgresql:
+        version: "14"
+    redis:
+      version: "6.2"

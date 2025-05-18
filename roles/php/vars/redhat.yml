@@ -1,0 +1,28 @@
+---
+# roles/php/vars/redhat.yml
+# PHP variables for RHEL-based distributions
+
+php_packages:
+  - "php"
+  - "php-fpm"
+  - "php-cli"
+  - "php-common"
+  - "php-bcmath"
+  - "php-curl"
+  - "php-xml"
+  - "php-mbstring"
+  - "php-zip"
+  - "php-mysqlnd"
+  - "php-pgsql"
+  - "php-gd"
+  - "php-intl"
+  - "php-opcache"
+  - "php-pdo"
+  - "php-tokenizer"
+  - "php-json"
+  - "php-process"
+
+php_conf_dir: "/etc/php.d"
+php_fpm_service: "php-fpm"
+php_fpm_conf_dir: "/etc/php-fpm.d"
+php_fpm_pool_conf: "/etc/php-fpm.d/www.conf"

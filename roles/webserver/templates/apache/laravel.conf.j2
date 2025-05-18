@@ -1,0 +1,82 @@
+<VirtualHost *:80>
+    ServerName {{ webserver_server_name }}
+    {% for alias in webserver_server_aliases %}
+    ServerAlias {{ alias }}
+    {% endfor %}
+    DocumentRoot {{ webserver_public_root }}
+
+    <Directory {{ webserver_public_root }}>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    # Set proper MIME types
+    AddType application/javascript .js
+    AddType text/css .css
+
+    # Handle PHP files via PHP-FPM
+    <FilesMatch \.php$>
+        SetHandler "proxy:fcgi://{{ webserver_php_fpm_socket | regex_replace('unix:', '') }}"
+    </FilesMatch>
+
+    # Custom log files
+    ErrorLog ${APACHE_LOG_DIR}/{{ webserver_server_name }}-error.log
+    CustomLog ${APACHE_LOG_DIR}/{{ webserver_server_name }}-access.log combined
+
+    # Security headers
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+
+    # Do not expose Apache version
+    ServerSignature Off
+</VirtualHost>
+
+{% if webserver_enable_ssl %}
+<VirtualHost *:443>
+    ServerName {{ webserver_server_name }}
+    {% for alias in webserver_server_aliases %}
+    ServerAlias {{ alias }}
+    {% endfor %}
+    DocumentRoot {{ webserver_public_root }}
+
+    # SSL Configuration
+    SSLEngine on
+    SSLCertificateFile {{ webserver_ssl_certificate }}
+    SSLCertificateKeyFile {{ webserver_ssl_certificate_key }}
+    
+    # Modern SSL configuration
+    SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
+    SSLHonorCipherOrder on
+    SSLCompression off
+    
+    <Directory {{ webserver_public_root }}>
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    # Set proper MIME types
+    AddType application/javascript .js
+    AddType text/css .css
+
+    # Handle PHP files via PHP-FPM
+    <FilesMatch \.php$>
+        SetHandler "proxy:fcgi://{{ webserver_php_fpm_socket | regex_replace('unix:', '') }}"
+    </FilesMatch>
+
+    # Custom log files
+    ErrorLog ${APACHE_LOG_DIR}/{{ webserver_server_name }}-ssl-error.log
+    CustomLog ${APACHE_LOG_DIR}/{{ webserver_server_name }}-ssl-access.log combined
+
+    # Security headers
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # Do not expose Apache version
+    ServerSignature Off
+</VirtualHost>
+{% endif %}

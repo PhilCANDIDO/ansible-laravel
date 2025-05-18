@@ -1,2 +1,85 @@
 ---
-# mysql installation tasks
+# roles/mysql/tasks/install.yml
+# MySQL installation tasks
+
+- name: (install) Set distribution-specific variables
+  ansible.builtin.include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - "default.yml"
+  tags: [mysql, install]
+
+# Debian/Ubuntu
+- name: (install) Install MySQL (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ mysql_packages }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: [mysql, install]
+
+# RHEL/CentOS
+- name: (install) Install MySQL (RHEL/CentOS)
+  block:
+    - name: (install) Install MySQL repository
+      ansible.builtin.dnf:
+        name: "{{ mysql_repo_package }}"
+        state: present
+      when: mysql_repo_package is defined
+
+    - name: (install) Install MySQL packages
+      ansible.builtin.dnf:
+        name: "{{ mysql_packages }}"
+        state: present
+  when: ansible_os_family == 'RedHat'
+  tags: [mysql, install]
+
+# Common tasks
+- name: (install) Ensure MySQL service is running and enabled
+  ansible.builtin.service:
+    name: "{{ mysql_service }}"
+    state: started
+    enabled: true
+  tags: [mysql, install]
+
+- name: (install) Set root password
+  ansible.builtin.command: >
+    mysqladmin -u root {{ (mysql_root_password_current is defined and mysql_root_password_current != '') | ternary('-p' + mysql_root_password_current, '') }} password {{ mysql_root_password }}
+  register: mysql_root_password_update
+  changed_when: mysql_root_password_update.rc == 0
+  failed_when: mysql_root_password_update.rc != 0 and mysql_root_password_update.rc != 1
+  when: mysql_root_password is defined and mysql_root_password != ''
+  no_log: true
+  tags: [mysql, install]
+
+- name: (install) Copy .my.cnf file with root password credentials
+  ansible.builtin.template:
+    src: root-my.cnf.j2
+    dest: /root/.my.cnf
+    owner: root
+    group: root
+    mode: '0600'
+  when: mysql_root_password is defined and mysql_root_password != ''
+  tags: [mysql, install]
+
+- name: (install) Delete anonymous MySQL users
+  community.mysql.mysql_user:
+    name: ''
+    host_all: true
+    state: absent
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  when: mysql_root_password is defined and mysql_root_password != ''
+  tags: [mysql, install]
+
+- name: (install) Remove test database
+  community.mysql.mysql_db:
+    name: test
+    state: absent
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  when: mysql_root_password is defined and mysql_root_password != ''
+  tags: [mysql, install]

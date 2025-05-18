@@ -1,2 +1,47 @@
 ---
-# redis installation tasks
+# roles/redis/tasks/install.yml
+# Redis installation tasks
+
+- name: (install) Set distribution-specific variables
+  ansible.builtin.include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - "default.yml"
+  tags: [redis, install]
+
+# Debian/Ubuntu
+- name: (install) Install Redis (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ redis_packages }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: [redis, install]
+
+# RHEL/CentOS
+- name: (install) Install EPEL repository (RHEL/CentOS)
+  ansible.builtin.package:
+    name: epel-release
+    state: present
+  when: 
+    - ansible_os_family == 'RedHat'
+    - ansible_distribution_major_version | int < 8
+  tags: [redis, install]
+
+- name: (install) Install Redis (RHEL/CentOS)
+  ansible.builtin.package:
+    name: "{{ redis_packages }}"
+    state: present
+  when: ansible_os_family == 'RedHat'
+  tags: [redis, install]
+
+# Common tasks
+- name: (install) Ensure Redis service is running and enabled
+  ansible.builtin.service:
+    name: "{{ redis_service }}"
+    state: started
+    enabled: true
+  tags: [redis, install]

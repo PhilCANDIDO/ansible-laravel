@@ -1,24 +1,64 @@
 ---
 # Variables for all hosts
 
+# Laravel version
+laravel_version: "11"  # Options: 11, 10
+
 # PHP configuration
 php_version: "{{ laravel_versions[laravel_version].php.version }}"
 php_extensions: "{{ laravel_versions[laravel_version].php.extensions }}"
+php_memory_limit: "128M"
+php_post_max_size: "64M"
+php_upload_max_filesize: "64M"
+php_max_execution_time: 60
+php_timezone: "UTC"
 
 # Composer configuration
 composer_version: "{{ laravel_versions[laravel_version].composer.version }}"
+composer_global_packages:
+  - "laravel/installer"
 
 # Node.js configuration
 nodejs_version: "{{ laravel_versions[laravel_version].nodejs.version }}"
+nodejs_npm_global_packages:
+  - name: "@vue/cli"
+  - name: "vite"
 
 # Database configuration
-db_engine: mysql  # Options: mysql, mariadb, postgresql
+db_engine: "mysql"  # Options: mysql, mariadb, postgresql
+
+# MySQL configuration (when db_engine is mysql)
+mysql_version: "{{ laravel_versions[laravel_version].databases.mysql.version }}"
+mysql_root_password: "secure_password_change_me"
+mysql_db_name: "laravel"
+mysql_db_user: "laravel"
+mysql_db_password: "laravel_password_change_me"
+
+# MariaDB configuration (when db_engine is mariadb)
+mariadb_version: "{{ laravel_versions[laravel_version].databases.mariadb.version }}"
+mariadb_root_password: "secure_password_change_me"
+mariadb_db_name: "laravel"
+mariadb_db_user: "laravel"
+mariadb_db_password: "laravel_password_change_me"
+
+# PostgreSQL configuration (when db_engine is postgresql)
+postgresql_version: "{{ laravel_versions[laravel_version].databases.postgresql.version }}"
+postgresql_admin_password: "secure_password_change_me"
+postgresql_db_name: "laravel"
+postgresql_db_user: "laravel"
+postgresql_db_password: "laravel_password_change_me"
 
 # Redis configuration
 enable_redis: false
+redis_version: "{{ laravel_versions[laravel_version].redis.version }}"
+redis_maxmemory: "256mb"
 
 # Webserver configuration
-webserver_type: nginx  # Options: nginx, apache
+webserver_type: "nginx"  # Options: nginx, apache
+webserver_server_name: "laravel.local"
+webserver_server_aliases: ["www.laravel.local"]
+webserver_laravel_root: "/var/www/laravel"
+webserver_enable_ssl: false
 
-# Laravel version
-laravel_version: "11"
+# System configuration
+update_cache: true

@@ -1,0 +1,42 @@
+---
+# Ansible inventory file for Laravel deployment
+
+all:
+  children:
+    # Web servers group
+    webservers:
+      hosts:
+        webserver1:
+          ansible_host: 192.168.1.10
+          # ansible_user: ubuntu
+          # ansible_ssh_private_key_file: ~/.ssh/id_rsa
+    
+    # Example for multiple environments
+    staging:
+      hosts:
+        staging_server:
+          ansible_host: 192.168.1.20
+          # You can override global variables for specific hosts
+          webserver_server_name: staging.example.com
+          webserver_laravel_root: /var/www/staging
+    
+    production:
+      hosts:
+        production_server:
+          ansible_host: 192.168.1.30
+          webserver_server_name: example.com
+          webserver_server_aliases: ["www.example.com"]
+          webserver_laravel_root: /var/www/production
+          webserver_enable_ssl: true
+          # Enable SSL for production
+          # webserver_ssl_certificate: /etc/ssl/certs/example.com.crt
+          # webserver_ssl_certificate_key: /etc/ssl/private/example.com.key
+          
+          # Set production-specific values
+          php_memory_limit: "256M"
+          php_max_execution_time: 120
+          enable_redis: true
+
+  # Global variables that apply to all hosts
+  vars:
+    ansible_python_interpreter: /usr/bin/python3

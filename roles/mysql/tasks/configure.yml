@@ -1,2 +1,49 @@
 ---
-# mysql configuration tasks
+# roles/mysql/tasks/configure.yml
+# MySQL configuration tasks
+
+- name: (configure) Copy MySQL configuration file
+  ansible.builtin.template:
+    src: my.cnf.j2
+    dest: "{{ mysql_config_file }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart MySQL
+  tags: [mysql, configure]
+
+- name: (configure) Create MySQL database for Laravel if specified
+  community.mysql.mysql_db:
+    name: "{{ mysql_db_name }}"
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    encoding: "{{ mysql_db_encoding }}"
+    collation: "{{ mysql_db_collation }}"
+  when: 
+    - mysql_db_name is defined
+    - mysql_db_name != ''
+    - mysql_root_password is defined
+    - mysql_root_password != ''
+  tags: [mysql, configure]
+
+- name: (configure) Create MySQL user for Laravel if specified
+  community.mysql.mysql_user:
+    name: "{{ mysql_db_user }}"
+    password: "{{ mysql_db_password }}"
+    priv: "{{ mysql_db_name }}.*:ALL"
+    host: "{{ mysql_db_host | default('%') }}"
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  when: 
+    - mysql_db_name is defined 
+    - mysql_db_name != ''
+    - mysql_db_user is defined
+    - mysql_db_user != ''
+    - mysql_db_password is defined
+    - mysql_db_password != ''
+    - mysql_root_password is defined
+    - mysql_root_password != ''
+  no_log: true
+  tags: [mysql, configure]

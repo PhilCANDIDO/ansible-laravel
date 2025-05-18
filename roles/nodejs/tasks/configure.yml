@@ -1,2 +1,26 @@
 ---
-# nodejs configuration tasks
+# roles/nodejs/tasks/configure.yml
+# Node.js configuration tasks
+
+- name: (configure) Set npm configuration values
+  ansible.builtin.command: npm config set {{ item.key }} {{ item.value }}
+  loop: "{{ nodejs_npm_config_values }}"
+  when: nodejs_npm_config_values | length > 0
+  changed_when: true
+  tags: [nodejs, configure]
+
+- name: (configure) Create global npm directory with proper permissions if specified
+  ansible.builtin.file:
+    path: "{{ nodejs_npm_global_dir }}"
+    state: directory
+    mode: '0755'
+    owner: "{{ nodejs_npm_global_owner | default(omit) }}"
+    group: "{{ nodejs_npm_global_group | default(omit) }}"
+  when: nodejs_npm_global_dir is defined and nodejs_npm_global_dir != ''
+  tags: [nodejs, configure]
+
+- name: (configure) Configure npm to use global directory
+  ansible.builtin.command: npm config set prefix {{ nodejs_npm_global_dir }}
+  when: nodejs_npm_global_dir is defined and nodejs_npm_global_dir != ''
+  changed_when: true
+  tags: [nodejs, configure]

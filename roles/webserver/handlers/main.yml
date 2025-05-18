@@ -1,2 +1,15 @@
 ---
+# roles/webserver/handlers/main.yml
 # Handlers for webserver role
+
+- name: Restart NGINX
+  ansible.builtin.service:
+    name: "{{ nginx_service }}"
+    state: restarted
+  when: webserver_type == 'nginx'
+
+- name: Restart Apache
+  ansible.builtin.service:
+    name: "{{ apache_service }}"
+    state: restarted
+  when: webserver_type == 'apache'
