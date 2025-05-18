@@ -1,0 +1,8 @@
+---
+# redis role main tasks file
+- name: Include installation tasks
+  include_tasks: install.yml
+
+- name: Include configuration tasks
+  include_tasks: configure.yml
+  when: configure_redis | default(true) | bool
