@@ -25,7 +25,7 @@
   tags: [redis, configure]
 
 - name: (configure) Enable overcommit memory
-  ansible.builtin.sysctl:
+  ansible.posix.sysctl:
     name: vm.overcommit_memory
     value: '1'
     state: present

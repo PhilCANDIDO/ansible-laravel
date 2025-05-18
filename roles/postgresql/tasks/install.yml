@@ -3,7 +3,7 @@
 # PostgreSQL installation tasks
 
 - name: (install) Set distribution-specific variables
-  include_vars: "{{ item }}"
+  ansible.builtin.include_vars: "{{ item }}"
   with_first_found:
     - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
     - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
@@ -38,14 +38,14 @@
 
 # RHEL/CentOS
 - name: (install) Install PostgreSQL repository (RHEL/CentOS)
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
     state: present
   when: ansible_os_family == 'RedHat'
   tags: [postgresql, install]
 
 - name: (install) Install PostgreSQL (RHEL/CentOS)
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: "{{ postgresql_packages }}"
     state: present
   when: ansible_os_family == 'RedHat'

@@ -28,7 +28,7 @@
   tags: [webserver, apache, install]
 
 - name: (apache) Enable required Apache modules
-  ansible.builtin.apache2_module:
+  community.general.apache2_module:
     name: "{{ item }}"
     state: present
   loop: "{{ apache_modules }}"

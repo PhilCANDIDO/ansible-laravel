@@ -3,7 +3,7 @@
 # PHP configuration for Laravel 11
 
 - name: (configure) Set distribution-specific paths
-  include_vars: "{{ item }}"
+  ansible.builtin.include_vars: "{{ item }}"
   with_first_found:
     - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
     - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"

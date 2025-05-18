@@ -3,7 +3,7 @@
 # Node.js installation tasks
 
 - name: (install) Set distribution-specific variables
-  include_vars: "{{ item }}"
+  ansible.builtin.include_vars: "{{ item }}"
   with_first_found:
     - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
     - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
@@ -95,7 +95,7 @@
 
 # Install npm packages if specified
 - name: (install) Install global npm packages
-  ansible.builtin.npm:
+  community.general.npm:
     name: "{{ item }}"
     global: true
     state: present

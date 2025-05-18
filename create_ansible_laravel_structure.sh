@@ -31,10 +31,10 @@ echo -e "${GREEN}Copying template files to their directories...${NC}"
 echo "---
 # php role main tasks file
 - name: Include installation tasks
-  include_tasks: install.yml
+  ansible.builtin.include_tasks: install.yml
 
 - name: Include configuration tasks
-  include_tasks: configure.yml
+  ansible.builtin.include_tasks: configure.yml
   when: configure_php | default(true) | bool" > roles/php/tasks/main.yml
 
 # Repeat for other roles...
@@ -43,10 +43,10 @@ for role in "${ROLES[@]}"; do
         echo "---
 # $role role main tasks file
 - name: Include installation tasks
-  include_tasks: install.yml
+  ansible.builtin.include_tasks: install.yml
 
 - name: Include configuration tasks
-  include_tasks: configure.yml
+  ansible.builtin.include_tasks: configure.yml
   when: configure_${role} | default(true) | bool" > roles/$role/tasks/main.yml
     fi
 done

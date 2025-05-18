@@ -25,7 +25,7 @@
 - name: (configure) Create PostgreSQL database for Laravel if specified
   become: true
   become_user: postgres
-  ansible.builtin.postgresql_db:
+  community.postgresql.postgresql_db:
     name: "{{ postgresql_db_name }}"
     encoding: "{{ postgresql_db_encoding }}"
     lc_collate: "{{ postgresql_db_lc_collate }}"
@@ -39,7 +39,7 @@
 - name: (configure) Create PostgreSQL user for Laravel if specified
   become: true
   become_user: postgres
-  ansible.builtin.postgresql_user:
+  community.postgresql.postgresql_user:
     name: "{{ postgresql_db_user }}"
     password: "{{ postgresql_db_password }}"
     db: "{{ postgresql_db_name }}"
@@ -58,7 +58,7 @@
 - name: (configure) Grant privileges to Laravel user
   become: true
   become_user: postgres
-  ansible.builtin.postgresql_privs:
+  community.postgresql.postgresql_privs:
     db: "{{ postgresql_db_name }}"
     role: "{{ postgresql_db_user }}"
     objs: ALL_IN_SCHEMA
