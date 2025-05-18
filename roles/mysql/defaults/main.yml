@@ -1,2 +1,37 @@
 ---
-# Default variables for mysql role
+# roles/mysql/defaults/main.yml
+# Default variables for MySQL role
+
+# MySQL version
+mysql_version: "8.0"
+
+# MySQL root password
+mysql_root_password: ""
+# mysql_root_password_current: ""
+
+# MySQL database for Laravel
+mysql_db_name: "laravel"
+mysql_db_user: "laravel"
+mysql_db_password: ""
+mysql_db_host: "localhost"
+mysql_db_encoding: "utf8mb4"
+mysql_db_collation: "utf8mb4_unicode_ci"
+
+# MySQL configuration
+mysql_bind_address: "127.0.0.1"
+mysql_port: 3306
+mysql_max_connections: 151
+mysql_key_buffer_size: "16M"
+mysql_max_allowed_packet: "64M"
+mysql_table_open_cache: 400
+mysql_sort_buffer_size: "4M"
+mysql_read_buffer_size: "2M"
+mysql_read_rnd_buffer_size: "1M"
+mysql_myisam_sort_buffer_size: "64M"
+mysql_thread_cache_size: 8
+mysql_query_cache_size: "16M"
+mysql_innodb_buffer_pool_size: "128M"
+mysql_innodb_log_file_size: "64M"
+mysql_innodb_log_buffer_size: "8M"
+mysql_innodb_flush_log_at_trx_commit: 1
+mysql_innodb_lock_wait_timeout: 50

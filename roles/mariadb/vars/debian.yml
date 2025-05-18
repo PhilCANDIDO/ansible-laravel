@@ -1,0 +1,11 @@
+---
+# roles/mariadb/vars/debian.yml
+# MariaDB variables for Debian-based distributions
+
+mariadb_packages:
+  - "mariadb-server"
+  - "mariadb-client"
+  - "python3-pymysql"  # For Ansible MySQL modules
+
+mariadb_service: "mariadb"
+mariadb_config_file: "/etc/mysql/mariadb.conf.d/50-server.cnf"

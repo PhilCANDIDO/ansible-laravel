@@ -1,2 +1,102 @@
 ---
-# mariadb installation tasks
+# roles/mariadb/tasks/install.yml
+# MariaDB installation tasks
+
+- name: (install) Set distribution-specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - "default.yml"
+  tags: [mariadb, install]
+
+# Debian/Ubuntu
+- name: (install) Add MariaDB repository key (Debian/Ubuntu)
+  ansible.builtin.apt_key:
+    url: "https://mariadb.org/mariadb_release_signing_key.asc"
+    state: present
+  when: ansible_os_family == 'Debian'
+  tags: [mariadb, install]
+
+- name: (install) Add MariaDB repository (Debian/Ubuntu)
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64] https://mirrors.xtom.nl/mariadb/repo/{{ mariadb_version }}/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} main"
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: [mariadb, install]
+
+- name: (install) Install MariaDB (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ mariadb_packages }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: [mariadb, install]
+
+# RHEL/CentOS
+- name: (install) Add MariaDB repository (RHEL/CentOS)
+  ansible.builtin.template:
+    src: mariadb.repo.j2
+    dest: /etc/yum.repos.d/mariadb.repo
+    owner: root
+    group: root
+    mode: '0644'
+  when: ansible_os_family == 'RedHat'
+  tags: [mariadb, install]
+
+- name: (install) Install MariaDB (RHEL/CentOS)
+  ansible.builtin.yum:
+    name: "{{ mariadb_packages }}"
+    state: present
+  when: ansible_os_family == 'RedHat'
+  tags: [mariadb, install]
+
+# Common tasks
+- name: (install) Ensure MariaDB service is running and enabled
+  ansible.builtin.service:
+    name: "{{ mariadb_service }}"
+    state: started
+    enabled: true
+  tags: [mariadb, install]
+
+- name: (install) Set root password
+  ansible.builtin.command: >
+    mysqladmin -u root {{ (mariadb_root_password_current is defined and mariadb_root_password_current != '') | ternary('-p' + mariadb_root_password_current, '') }} password {{ mariadb_root_password }}
+  register: mariadb_root_password_update
+  changed_when: mariadb_root_password_update.rc == 0
+  failed_when: mariadb_root_password_update.rc != 0 and mariadb_root_password_update.rc != 1
+  when: mariadb_root_password is defined and mariadb_root_password != ''
+  no_log: true
+  tags: [mariadb, install]
+
+- name: (install) Copy .my.cnf file with root password credentials
+  ansible.builtin.template:
+    src: root-my.cnf.j2
+    dest: /root/.my.cnf
+    owner: root
+    group: root
+    mode: '0600'
+  when: mariadb_root_password is defined and mariadb_root_password != ''
+  tags: [mariadb, install]
+
+- name: (install) Delete anonymous MariaDB users
+  ansible.builtin.mysql_user:
+    name: ''
+    host_all: true
+    state: absent
+    login_user: root
+    login_password: "{{ mariadb_root_password }}"
+  when: mariadb_root_password is defined and mariadb_root_password != ''
+  tags: [mariadb, install]
+
+- name: Remove test database
+  ansible.builtin.mysql_db:
+    name: test
+    state: absent
+    login_user: root
+    login_password: "{{ mariadb_root_password }}"
+  when: mariadb_root_password is defined and mariadb_root_password != ''
+  tags: [mariadb, install]

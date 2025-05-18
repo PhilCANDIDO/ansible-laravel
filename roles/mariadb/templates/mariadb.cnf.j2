@@ -1,0 +1,33 @@
+[mariadb]
+# MariaDB-specific config
+
+[mysql]
+default-character-set = utf8mb4
+
+[mysqld]
+bind-address = {{ mariadb_bind_address }}
+port = {{ mariadb_port }}
+max_connections = {{ mariadb_max_connections }}
+key_buffer_size = {{ mariadb_key_buffer_size }}
+max_allowed_packet = {{ mariadb_max_allowed_packet }}
+table_open_cache = {{ mariadb_table_open_cache }}
+sort_buffer_size = {{ mariadb_sort_buffer_size }}
+read_buffer_size = {{ mariadb_read_buffer_size }}
+read_rnd_buffer_size = {{ mariadb_read_rnd_buffer_size }}
+myisam_sort_buffer_size = {{ mariadb_myisam_sort_buffer_size }}
+thread_cache_size = {{ mariadb_thread_cache_size }}
+query_cache_size = {{ mariadb_query_cache_size }}
+
+# InnoDB settings
+innodb_buffer_pool_size = {{ mariadb_innodb_buffer_pool_size }}
+innodb_log_file_size = {{ mariadb_innodb_log_file_size }}
+innodb_log_buffer_size = {{ mariadb_innodb_log_buffer_size }}
+innodb_flush_log_at_trx_commit = {{ mariadb_innodb_flush_log_at_trx_commit }}
+innodb_lock_wait_timeout = {{ mariadb_innodb_lock_wait_timeout }}
+
+# Character set and collation
+character-set-server = utf8mb4
+collation-server = utf8mb4_general_ci
+
+[mysqldump]
+max_allowed_packet = {{ mariadb_max_allowed_packet }}

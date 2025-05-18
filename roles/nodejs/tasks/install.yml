@@ -1,2 +1,104 @@
 ---
-# nodejs installation tasks
+# roles/nodejs/tasks/install.yml
+# Node.js installation tasks
+
+- name: (install) Set distribution-specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - "default.yml"
+  tags: [nodejs, install]
+
+# Check if NodeJS is already installed with correct version
+- name: (install) Check if Node.js is installed
+  ansible.builtin.command: node --version
+  register: node_version_check
+  ignore_errors: true
+  changed_when: false
+  check_mode: false
+  tags: [nodejs, install]
+
+# Debian/Ubuntu installation
+- name: (install) Setup Node.js repository (Debian/Ubuntu)
+  block:
+    - name: Install prerequisites for Node.js repo
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+
+    - name: (install) Add NodeSource GPG key
+      ansible.builtin.apt_key:
+        url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
+        state: present
+
+    - name: (install) Add NodeSource repository
+      ansible.builtin.apt_repository:
+        repo: "deb https://deb.nodesource.com/node_{{ nodejs_version }} {{ ansible_distribution_release }} main"
+        state: present
+        update_cache: true
+  when: 
+    - ansible_os_family == 'Debian'
+    - node_version_check.rc != 0 or (nodejs_version not in node_version_check.stdout)
+  tags: [nodejs, install]
+
+- name: (install) Install Node.js (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+  when: 
+    - ansible_os_family == 'Debian'
+    - node_version_check.rc != 0 or (nodejs_version not in node_version_check.stdout)
+  tags: [nodejs, install]
+
+# RHEL/CentOS installation
+- name: (install) Setup Node.js repository (RHEL/CentOS)
+  block:
+    - name: Add NodeSource repository
+      ansible.builtin.command: >
+        curl -sL https://rpm.nodesource.com/setup_{{ nodejs_version }} | bash -
+      args:
+        warn: false
+      changed_when: true
+  when: 
+    - ansible_os_family == 'RedHat'
+    - node_version_check.rc != 0 or (nodejs_version not in node_version_check.stdout)
+  tags: [nodejs, install]
+
+- name: (install) Install Node.js (RHEL/CentOS)
+  ansible.builtin.package:
+    name: nodejs
+    state: present
+  when: 
+    - ansible_os_family == 'RedHat'
+    - node_version_check.rc != 0 or (nodejs_version not in node_version_check.stdout)
+  tags: [nodejs, install]
+
+# Verify installation
+- name: (install) Verify Node.js installation
+  ansible.builtin.command: node --version
+  register: node_version_result
+  changed_when: false
+  check_mode: false
+  tags: [nodejs, install]
+
+- name: (install) Display installed Node.js version
+  ansible.builtin.debug:
+    msg: "Installed Node.js version: {{ node_version_result.stdout }}"
+  tags: [nodejs, install]
+
+# Install npm packages if specified
+- name: (install) Install global npm packages
+  ansible.builtin.npm:
+    name: "{{ item }}"
+    global: true
+    state: present
+  loop: "{{ nodejs_npm_global_packages }}"
+  when: nodejs_npm_global_packages | length > 0
+  tags: [nodejs, install]

@@ -1,0 +1,13 @@
+---
+# roles/mysql/vars/redhat.yml
+# MySQL variables for RHEL-based distributions
+
+mysql_repo_package: "https://dev.mysql.com/get/mysql80-community-release-el{{ ansible_distribution_major_version }}-1.noarch.rpm"
+
+mysql_packages:
+  - "mysql-community-server"
+  - "mysql-community-client"
+  - "python3-PyMySQL"  # For Ansible MySQL modules
+
+mysql_service: "mysqld"
+mysql_config_file: "/etc/my.cnf.d/mysql-server.cnf"

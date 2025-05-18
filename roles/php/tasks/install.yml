@@ -1,2 +1,105 @@
 ---
-# php installation tasks
+# roles/php/tasks/install.yml
+# PHP Installation for different distributions
+
+- name: (install) Set distribution-specific variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - "default.yml"
+  tags: [php, install]
+
+# Ubuntu/Debian
+- name: (install) Add PPA repository for PHP (Ubuntu)
+  ansible.builtin.apt_repository:
+    repo: "ppa:ondrej/php"
+    state: present
+    update_cache: true
+  when: ansible_distribution == 'Ubuntu'
+  tags: [php, install]
+
+- name: (install) Add Sury repository for PHP (Debian)
+  block:
+    - name: Install prerequisites for Debian PHP repo
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - lsb-release
+        state: present
+
+    - name: (install) Add Sury PHP repository key
+      ansible.builtin.get_url:
+        url: https://packages.sury.org/php/apt.gpg
+        dest: /usr/share/keyrings/deb.sury.org-php.gpg
+        mode: '0644'
+
+    - name: (install) Add Sury PHP repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ {{ ansible_distribution_release }} main"
+        state: present
+        update_cache: true
+  when: ansible_distribution == 'Debian'
+  tags: [php, install]
+
+- name: (install) Install PHP and extensions on Debian/Ubuntu
+  ansible.builtin.apt:
+    name: "{{ php_packages }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: [php, install]
+
+# RHEL/CentOS/AlmaLinux/Rocky Linux
+- name: (install) Setup EPEL and Remi repositories (RHEL-like)
+  block:
+    - name: Install EPEL repository
+      ansible.builtin.package:
+        name: epel-release
+        state: present
+
+    - name: (install) Install DNF plugins (RHEL/CentOS 8+)
+      ansible.builtin.package:
+        name: dnf-utils
+        state: present
+      when: ansible_distribution_major_version | int >= 8
+
+    - name: (install) Install Remi repository
+      ansible.builtin.package:
+        name: "https://rpms.remirepo.net/enterprise/remi-release-{{ ansible_distribution_major_version }}.rpm"
+        state: present
+      when: ansible_distribution_major_version | int >= 7
+  when: ansible_os_family == 'RedHat'
+  tags: [php, install]
+
+- name: (install) Enable PHP Remi module (RHEL 8+)
+  ansible.builtin.command: "dnf module reset php -y && dnf module enable php:remi-{{ php_version }} -y"
+  args:
+    warn: false
+  when: 
+    - ansible_os_family == 'RedHat'
+    - ansible_distribution_major_version | int >= 8
+  changed_when: true
+  tags: [php, install]
+
+- name: (install) Install PHP and extensions (RHEL/CentOS)
+  ansible.builtin.package:
+    name: "{{ php_packages }}"
+    state: present
+  when: ansible_os_family == 'RedHat'
+  tags: [php, install]
+
+- name: (install) Verify PHP installation
+  ansible.builtin.command: "php -v"
+  register: php_version_check
+  changed_when: false
+  check_mode: false
+  tags: [php, install]
+
+- name: (install) Display installed PHP version
+  ansible.builtin.debug:
+    msg: "Installed PHP version: {{ php_version_check.stdout_lines[0] }}"
+  tags: [php, install]

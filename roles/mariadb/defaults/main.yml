@@ -1,2 +1,37 @@
 ---
-# Default variables for mariadb role
+# roles/mariadb/defaults/main.yml
+# Default variables for MariaDB role
+
+# MariaDB version
+mariadb_version: "10.11"
+
+# MariaDB root password
+mariadb_root_password: ""
+# mariadb_root_password_current: ""
+
+# MariaDB database for Laravel
+mariadb_db_name: "laravel"
+mariadb_db_user: "laravel"
+mariadb_db_password: ""
+mariadb_db_host: "localhost"
+mariadb_db_encoding: "utf8mb4"
+mariadb_db_collation: "utf8mb4_unicode_ci"
+
+# MariaDB configuration
+mariadb_bind_address: "127.0.0.1"
+mariadb_port: 3306
+mariadb_max_connections: 151
+mariadb_key_buffer_size: "16M"
+mariadb_max_allowed_packet: "64M"
+mariadb_table_open_cache: 400
+mariadb_sort_buffer_size: "4M"
+mariadb_read_buffer_size: "2M"
+mariadb_read_rnd_buffer_size: "1M"
+mariadb_myisam_sort_buffer_size: "64M"
+mariadb_thread_cache_size: 8
+mariadb_query_cache_size: "16M"
+mariadb_innodb_buffer_pool_size: "128M"
+mariadb_innodb_log_file_size: "64M"
+mariadb_innodb_log_buffer_size: "8M"
+mariadb_innodb_flush_log_at_trx_commit: 1
+mariadb_innodb_lock_wait_timeout: 50

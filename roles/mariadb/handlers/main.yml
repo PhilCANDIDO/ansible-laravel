@@ -1,2 +1,8 @@
 ---
-# Handlers for mariadb role
+# roles/mariadb/handlers/main.yml
+# Handlers for MariaDB role
+
+- name: Restart MariaDB
+  ansible.builtin.service:
+    name: "{{ mariadb_service }}"
+    state: restarted

@@ -1,0 +1,11 @@
+---
+# roles/mariadb/vars/redhat.yml
+# MariaDB variables for RHEL-based distributions
+
+mariadb_packages:
+  - "MariaDB-server"
+  - "MariaDB-client"
+  - "python3-PyMySQL"  # For Ansible MySQL modules
+
+mariadb_service: "mariadb"
+mariadb_config_file: "/etc/my.cnf.d/server.cnf"
