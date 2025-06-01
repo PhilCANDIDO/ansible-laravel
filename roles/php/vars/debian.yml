@@ -18,8 +18,9 @@ php_packages:
   - "php{{ php_version }}-intl"
   - "php{{ php_version }}-opcache"
   - "php{{ php_version }}-sqlite3"
-  - "php{{ php_version }}-tokenizer"
-  - "php{{ php_version }}-json"
+  # Note: php-json is included in php-common since PHP 8.0+
+  # - "php{{ php_version }}-json"  # Not needed for PHP 8.0+
+  # Note: php-tokenizer functionality is part of php-common since PHP 8.0+
 
 php_conf_dir: "/etc/php/{{ php_version }}/mods-available"
 php_fpm_service: "php{{ php_version }}-fpm"

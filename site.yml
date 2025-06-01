@@ -42,14 +42,26 @@
         - lsb-release
       tags: [common, system]
       
-    - name: Install Python dependencies for Ansible modules
+    # Fix for Python dependencies installation issue
+    - name: Install Python dependencies for Ansible modules (Debian/Ubuntu)
+      ansible.builtin.package:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - python3-pymysql
+        - python3-psycopg2
+      when: ansible_os_family == "Debian"
+      tags: [common, python]
+
+    - name: Install Python dependencies for Ansible modules (RHEL/CentOS)
       ansible.builtin.pip:
         name: "{{ item }}"
         state: present
       loop:
         - PyMySQL
         - psycopg2-binary
-      ignore_errors: true  # Some systems might not need these
+      when: ansible_os_family == "RedHat"
+      ignore_errors: true
       tags: [common, python]
 
     - name: Verify Laravel version compatibility
