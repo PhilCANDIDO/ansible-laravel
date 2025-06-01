@@ -1,0 +1,21 @@
+---
+# roles/nodejs/vars/redhat.yml
+# Node.js variables for RHEL-based distributions
+
+# Node.js installation method
+nodejs_installation_method: "repository"  # Options: repository, binary
+
+# Node.js repository configuration
+nodejs_repo_script_url: "https://rpm.nodesource.com/setup_{{ nodejs_version }}"
+
+# Package names
+nodejs_packages:
+  - "nodejs"
+  - "npm"
+
+# Service configuration (if applicable)
+nodejs_service_enabled: false
+
+# NPM configuration
+npm_config_prefix: "/usr/local"
+npm_cache_dir: "/tmp/npm-cache"
