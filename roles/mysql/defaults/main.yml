@@ -5,9 +5,9 @@
 # MySQL version
 mysql_version: "8.0"
 
-# MySQL root password
+# MySQL root password configuration
 mysql_root_password: ""
-# mysql_root_password_current: ""
+# mysql_root_password_current: ""  # Uncomment and set if changing existing password
 
 # MySQL database for Laravel
 mysql_db_name: "laravel"
