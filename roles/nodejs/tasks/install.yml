@@ -1,6 +1,6 @@
 ---
 # roles/nodejs/tasks/install.yml
-# Node.js installation tasks
+# Node.js installation tasks - Fixed for Ubuntu 24.04 and modern distributions
 
 - name: (install) Set distribution-specific variables
   ansible.builtin.include_vars: "{{ item }}"
@@ -35,8 +35,46 @@
          (current_nodejs_major is defined and target_nodejs_major is defined and current_nodejs_major != target_nodejs_major) }}
   tags: [nodejs, install]
 
-# Debian/Ubuntu installation
-- name: (install) Setup Node.js repository (Debian/Ubuntu)
+# Use Snap for Ubuntu 24.04+ as NodeSource repository is not reliable
+- name: (install) Check if distribution should use Snap (Ubuntu 24.04+)
+  ansible.builtin.set_fact:
+    use_snap_installation: >-
+      {{ ansible_distribution == 'Ubuntu' and ansible_distribution_version is version('24.04', '>=') }}
+  tags: [nodejs, install]
+
+# Snap installation for Ubuntu 24.04+
+- name: (install) Install Node.js via Snap (Ubuntu 24.04+)
+  block:
+    - name: (install) Install snapd if not present
+      ansible.builtin.apt:
+        name: snapd
+        state: present
+        update_cache: true
+
+    - name: (install) Install Node.js via Snap
+      community.general.snap:
+        name: node
+        channel: "{{ nodejs_version | regex_replace('\\.x$', '') }}/stable"
+        classic: true
+        state: present
+
+    - name: (install) Create Node.js symlinks for compatibility
+      ansible.builtin.file:
+        src: "/snap/bin/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        state: link
+        force: true
+      loop:
+        - node
+        - npm
+        - npx
+  when: 
+    - use_snap_installation | bool
+    - nodejs_installation_needed | bool
+  tags: [nodejs, install]
+
+# Traditional repository installation for older Ubuntu and other Debian-based systems
+- name: (install) Setup Node.js repository (Debian/Ubuntu < 24.04)
   block:
     - name: (install) Install prerequisites for Node.js repo
       ansible.builtin.apt:
@@ -54,50 +92,68 @@
         state: directory
         mode: '0755'
 
-    - name: (install) Add NodeSource GPG key
+    - name: (install) Download and add NodeSource GPG key
       ansible.builtin.get_url:
         url: "{{ nodejs_repo_key_url }}"
         dest: /usr/share/keyrings/nodesource.gpg
         mode: '0644'
+        force: true
 
     - name: (install) Add NodeSource repository
       ansible.builtin.apt_repository:
         repo: "deb [signed-by=/usr/share/keyrings/nodesource.gpg] {{ nodejs_repo_url }} {{ ansible_distribution_release }} main"
         state: present
+        filename: nodesource
+        update_cache: true
+
+    - name: (install) Install Node.js packages
+      ansible.builtin.apt:
+        name: "{{ nodejs_packages }}"
+        state: present
         update_cache: true
   when: 
     - ansible_os_family == 'Debian'
+    - not (use_snap_installation | bool)
     - nodejs_installation_needed | bool
   tags: [nodejs, install]
 
-- name: (install) Install Node.js (Debian/Ubuntu)
-  ansible.builtin.apt:
-    name: "{{ nodejs_packages }}"
-    state: present
-    update_cache: true
-  when: 
-    - ansible_os_family == 'Debian'
-    - nodejs_installation_needed | bool
-  tags: [nodejs, install]
-
-# RHEL/CentOS installation
+# RHEL/CentOS installation using NodeSource repository
 - name: (install) Setup Node.js repository (RHEL/CentOS)
-  ansible.builtin.shell: |
-    curl -fsSL {{ nodejs_repo_script_url }} | bash -
-  args:
-    warn: false
+  block:
+    - name: (install) Download and execute NodeSource setup script
+      ansible.builtin.get_url:
+        url: "{{ nodejs_repo_script_url }}"
+        dest: /tmp/nodesource_setup.sh
+        mode: '0755'
+
+    - name: (install) Execute NodeSource setup script
+      ansible.builtin.command: bash /tmp/nodesource_setup.sh
+      args:
+        creates: /etc/yum.repos.d/nodesource-el*.repo
+
+    - name: (install) Clean up setup script
+      ansible.builtin.file:
+        path: /tmp/nodesource_setup.sh
+        state: absent
+
+    - name: (install) Install Node.js packages
+      ansible.builtin.package:
+        name: "{{ nodejs_packages }}"
+        state: present
   when: 
     - ansible_os_family == 'RedHat'
     - nodejs_installation_needed | bool
-  changed_when: true
   tags: [nodejs, install]
 
-- name: (install) Install Node.js (RHEL/CentOS)
+# Alternative installation using package manager default repositories
+- name: (install) Install Node.js from default repositories (fallback)
   ansible.builtin.package:
-    name: "{{ nodejs_packages }}"
+    name: 
+      - nodejs
+      - npm
     state: present
   when: 
-    - ansible_os_family == 'RedHat'
+    - ansible_os_family not in ['Debian', 'RedHat']
     - nodejs_installation_needed | bool
   tags: [nodejs, install]
 
@@ -121,15 +177,41 @@
     msg: |
       Node.js version: {{ node_version_result.stdout }}
       npm version: {{ npm_version_result.stdout }}
+      Installation method: {{ use_snap_installation | default(false) | ternary('Snap', 'Repository') }}
+  tags: [nodejs, install]
+
+# Configure npm global directory to avoid permission issues
+- name: (install) Configure npm global directory
+  ansible.builtin.file:
+    path: /usr/local/lib/npm-global
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+  tags: [nodejs, install]
+
+- name: (install) Set npm global prefix
+  ansible.builtin.command: npm config set prefix '/usr/local/lib/npm-global'
+  environment:
+    HOME: /root
+  changed_when: true
+  tags: [nodejs, install]
+
+- name: (install) Add npm global bin to PATH
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    regexp: '^PATH='
+    line: 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/lib/npm-global/bin"'
+    backup: true
   tags: [nodejs, install]
 
 # Install global npm packages if specified
 - name: (install) Install global npm packages
-  community.general.npm:
-    name: "{{ item.name | default(item) }}"
-    version: "{{ item.version | default(omit) }}"
-    global: true
-    state: present
+  ansible.builtin.command: npm install -g {{ item.name | default(item) }}{{ '@' + item.version if item.version is defined else '' }}
   loop: "{{ nodejs_npm_global_packages }}"
   when: nodejs_npm_global_packages | length > 0
+  environment:
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/lib/npm-global/bin"
+  register: npm_install_result
+  changed_when: "'up to date' not in npm_install_result.stdout"
   tags: [nodejs, install, npm]
