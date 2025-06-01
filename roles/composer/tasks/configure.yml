@@ -6,6 +6,8 @@
   ansible.builtin.command: composer config -g github-oauth.github.com {{ composer_github_oauth_token }}
   when: composer_github_oauth_token is defined and composer_github_oauth_token != ''
   changed_when: true
+  environment:
+    COMPOSER_ALLOW_SUPERUSER: "1"
   tags: [composer, configure]
 
 - name: (configure) Set global config values
@@ -13,6 +15,8 @@
   with_items: "{{ composer_global_configs }}"
   changed_when: true
   when: composer_global_configs | length > 0
+  environment:
+    COMPOSER_ALLOW_SUPERUSER: "1"
   tags: [composer, configure]
   
 - name: (configure) Create Composer cache directory
@@ -28,4 +32,6 @@
   when: composer_global_packages | length > 0
   register: composer_global_result
   changed_when: "'Nothing to install, update or remove' not in composer_global_result.stdout"
+  environment:
+    COMPOSER_ALLOW_SUPERUSER: "1"
   tags: [composer, configure]

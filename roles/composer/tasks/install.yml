@@ -8,6 +8,8 @@
   ignore_errors: true
   changed_when: false
   check_mode: false
+  environment:
+    COMPOSER_ALLOW_SUPERUSER: "1"
   tags: [composer, install]
 
 - name: (install) Download Composer installer
@@ -25,6 +27,8 @@
     --filename=composer
   args:
     creates: /usr/local/bin/composer
+  environment:
+    COMPOSER_ALLOW_SUPERUSER: "1"
   when: composer_version_check.rc != 0 or 'composer.phar' in composer_version_check.stdout
   tags: [composer, install]
 
@@ -33,6 +37,8 @@
   register: composer_version_result
   changed_when: false
   check_mode: false
+  environment:
+    COMPOSER_ALLOW_SUPERUSER: "1"
   tags: [composer, install]
 
 - name: (install) Display installed Composer version

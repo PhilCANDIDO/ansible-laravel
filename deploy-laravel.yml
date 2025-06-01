@@ -76,6 +76,8 @@
         chdir: "{{ laravel_deploy_dir }}"
       become: true
       become_user: "{{ webserver_user }}"
+      environment:
+        COMPOSER_ALLOW_SUPERUSER: "1"
       
     - name: Generate Laravel application key
       ansible.builtin.command:
