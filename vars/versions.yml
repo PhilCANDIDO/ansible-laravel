@@ -1,13 +1,14 @@
 ---
 # Laravel version requirements mapping
-# This file maps Laravel versions to their required dependencies
+# Based on official Laravel documentation
+# Updated: January 2025
 
 laravel_versions:
   "11":
     php:
-      version: "8.2"  # Laravel 11 requires PHP 8.2+ (confirmed from Laravel docs)
+      version: "8.2"  # Laravel 11 requires PHP 8.2 minimum (official requirement)
       extensions:
-        - bcmath
+        # Core PHP extensions required by Laravel 11 (official documentation)
         - ctype
         - curl
         - dom
@@ -19,33 +20,51 @@ laravel_versions:
         - pcre
         - pdo
         - session
+        - tokenizer
         - xml
-        - zip
-        # For Laravel specific requirements
-        - gd
-        - intl
-        - opcache
-        - sqlite3
-        # Database specific
-        - mysql      # For MySQL/MariaDB
-        - pgsql      # For PostgreSQL
+        # Additional extensions for Laravel functionality
+        - bcmath      # For precise arithmetic operations
+        - gd          # For image manipulation
+        - intl        # For internationalization
+        - opcache     # For performance optimization
+        - zip         # For archive handling
+        - sqlite3     # For SQLite support (often used in testing)
+        # Database specific extensions
+        - mysql       # For MySQL/MariaDB support
+        - pgsql       # For PostgreSQL support
     composer:
       version: "latest"  # Always use the latest Composer version
+      minimum_version: "2.2"
     nodejs:
-      version: "20.x"    # Using LTS version for Node.js (Laravel 11 compatible)
+      version: "20.x"    # Node.js 20 LTS (recommended for Laravel 11)
+      minimum_version: "18.x"
     databases:
       mysql:
         version: "8.0"
+        minimum_version: "8.0"
       mariadb:
         version: "10.11"  # MariaDB 10.11 LTS
+        minimum_version: "10.3"
       postgresql:
         version: "15"
+        minimum_version: "13"
+      sqlite:
+        version: "3.35"
+        minimum_version: "3.26"
     redis:
-      version: "7.0"  # Latest stable Redis version
-  
+      version: "7.0"      # Latest stable Redis version
+      minimum_version: "6.2"
+    webservers:
+      nginx:
+        version: "1.24"
+        minimum_version: "1.18"
+      apache:
+        version: "2.4"
+        minimum_version: "2.4.41"
+    
   "10":
     php:
-      version: "8.1"  # Laravel 10 requires PHP 8.1+
+      version: "8.1"  # Laravel 10 requires PHP 8.1 minimum
       extensions:
         - bcmath
         - ctype
@@ -68,14 +87,72 @@ laravel_versions:
         - pgsql
     composer:
       version: "latest"
+      minimum_version: "2.2"
     nodejs:
-      version: "18.x"
+      version: "18.x"     # Node.js 18 LTS for Laravel 10
+      minimum_version: "16.x"
     databases:
       mysql:
         version: "8.0"
+        minimum_version: "5.7"
       mariadb:
         version: "10.10"
+        minimum_version: "10.3"
       postgresql:
         version: "14"
+        minimum_version: "11"
+      sqlite:
+        version: "3.35"
+        minimum_version: "3.26"
     redis:
       version: "6.2"
+      minimum_version: "5.0"
+    webservers:
+      nginx:
+        version: "1.22"
+        minimum_version: "1.18"
+      apache:
+        version: "2.4"
+        minimum_version: "2.4.41"
+
+# Performance and optimization recommendations
+performance_recommendations:
+  php:
+    memory_limit: "512M"          # Recommended for production
+    max_execution_time: 300       # For long-running operations
+    opcache_memory_consumption: 256
+    opcache_max_accelerated_files: 20000
+  composer:
+    optimize_autoloader: true
+    no_dev: true                  # Don't install dev dependencies in production
+  nodejs:
+    NODE_ENV: "production"
+  database:
+    mysql:
+      innodb_buffer_pool_size: "70%"  # of available RAM
+      max_connections: 300
+    postgresql:
+      shared_buffers: "25%"       # of available RAM
+      max_connections: 200
+  redis:
+    maxmemory: "1gb"
+    maxmemory_policy: "allkeys-lru"
+
+# Security recommendations
+security_recommendations:
+  php:
+    expose_php: "Off"
+    allow_url_fopen: "Off"
+    allow_url_include: "Off"
+    disable_functions: "exec,passthru,shell_exec,system,proc_open,popen"
+  laravel:
+    app_debug: false              # Must be false in production
+    app_env: "production"
+    session_secure: true         # For HTTPS
+    session_http_only: true
+  webserver:
+    server_tokens: "off"          # Hide server version
+    client_max_body_size: "100M"
+  ssl:
+    protocols: "TLSv1.2 TLSv1.3"
+    ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
