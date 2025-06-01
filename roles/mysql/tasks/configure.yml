@@ -1,6 +1,6 @@
 ---
 # roles/mysql/tasks/configure.yml
-# MySQL configuration tasks
+# MySQL configuration tasks - Fixed for proper authentication
 
 - name: (configure) Copy MySQL configuration file
   ansible.builtin.template:
@@ -12,12 +12,29 @@
   notify: Restart MySQL
   tags: [mysql, configure]
 
+# Test the MySQL connection before proceeding
+- name: (configure) Test MySQL connection with root credentials
+  community.mysql.mysql_info:
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    login_unix_socket: "{{ '/var/run/mysqld/mysqld.sock' if ansible_os_family == 'Debian' else '/var/lib/mysql/mysql.sock' }}"
+  register: mysql_connection_test
+  when: mysql_root_password is defined and mysql_root_password != ''
+  tags: [mysql, configure]
+
+- name: (configure) Display MySQL connection status
+  ansible.builtin.debug:
+    msg: "MySQL connection successful. Server version: {{ mysql_connection_test.version.full if mysql_connection_test is defined else 'Unknown' }}"
+  when: mysql_connection_test is defined and mysql_connection_test is succeeded
+  tags: [mysql, configure]
+
 - name: (configure) Create MySQL database for Laravel if specified
   community.mysql.mysql_db:
     name: "{{ mysql_db_name }}"
     state: present
     login_user: root
     login_password: "{{ mysql_root_password }}"
+    login_unix_socket: "{{ '/var/run/mysqld/mysqld.sock' if ansible_os_family == 'Debian' else '/var/lib/mysql/mysql.sock' }}"
     encoding: "{{ mysql_db_encoding }}"
     collation: "{{ mysql_db_collation }}"
   when: 
@@ -32,10 +49,11 @@
     name: "{{ mysql_db_user }}"
     password: "{{ mysql_db_password }}"
     priv: "{{ mysql_db_name }}.*:ALL"
-    host: "{{ mysql_db_host | default('%') }}"
+    host: "{{ mysql_db_host | default('localhost') }}"
     state: present
     login_user: root
     login_password: "{{ mysql_root_password }}"
+    login_unix_socket: "{{ '/var/run/mysqld/mysqld.sock' if ansible_os_family == 'Debian' else '/var/lib/mysql/mysql.sock' }}"
   when: 
     - mysql_db_name is defined 
     - mysql_db_name != ''
@@ -46,4 +64,30 @@
     - mysql_root_password is defined
     - mysql_root_password != ''
   no_log: true
+  tags: [mysql, configure]
+
+# Verify the Laravel user can connect
+- name: (configure) Test Laravel user MySQL connection
+  community.mysql.mysql_info:
+    login_user: "{{ mysql_db_user }}"
+    login_password: "{{ mysql_db_password }}"
+    login_host: "{{ mysql_db_host | default('localhost') }}"
+  register: laravel_user_test
+  when: 
+    - mysql_db_user is defined
+    - mysql_db_user != ''
+    - mysql_db_password is defined
+    - mysql_db_password != ''
+  ignore_errors: true
+  tags: [mysql, configure]
+
+- name: (configure) Display Laravel user connection status
+  ansible.builtin.debug:
+    msg: |
+      Laravel MySQL user '{{ mysql_db_user }}' connection: {{ 'SUCCESS' if laravel_user_test is succeeded else 'FAILED' }}
+      Database: {{ mysql_db_name }}
+      Host: {{ mysql_db_host | default('localhost') }}
+  when: 
+    - mysql_db_user is defined
+    - laravel_user_test is defined
   tags: [mysql, configure]
