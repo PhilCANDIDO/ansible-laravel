@@ -1,6 +1,6 @@
 ---
 # roles/mysql/tasks/install.yml
-# MySQL installation tasks
+# MySQL installation tasks - Fixed for MySQL 8.0 auth_socket issue
 
 - name: (install) Set distribution-specific variables
   ansible.builtin.include_vars: "{{ item }}"
@@ -45,43 +45,51 @@
     enabled: true
   tags: [mysql, install]
 
-# Check if MySQL root password is already set
-- name: (install) Check if MySQL root password is set
+# Fix for MySQL 8.0 auth_socket plugin on Ubuntu
+- name: (install) Check MySQL authentication method for root user
+  ansible.builtin.shell: |
+    mysql -e "SELECT user, host, plugin FROM mysql.user WHERE user='root'" | grep auth_socket || true
+  register: mysql_auth_check
+  changed_when: false
+  ignore_errors: true
+  tags: [mysql, install]
+
+- name: (install) Set MySQL root password and change authentication plugin (MySQL 8.0)
+  ansible.builtin.shell: |
+    mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}';"
+    mysql -e "FLUSH PRIVILEGES;"
+  when: 
+    - mysql_root_password is defined 
+    - mysql_root_password != ''
+    - "'auth_socket' in mysql_auth_check.stdout"
+  register: mysql_root_password_update
+  changed_when: true
+  no_log: true
+  tags: [mysql, install]
+
+# For systems where root doesn't use auth_socket
+- name: (install) Check if MySQL root password is already set (traditional method)
   ansible.builtin.command: >
     mysql -u root -e "SELECT 1"
   register: mysql_root_password_check
   ignore_errors: true
   changed_when: false
   no_log: true
+  when: "'auth_socket' not in mysql_auth_check.stdout"
   tags: [mysql, install]
 
-# Set root password only if it's not already set and a password is provided
-- name: (install) Set MySQL root password (first time setup)
+- name: (install) Set MySQL root password (first time setup - traditional)
   ansible.builtin.command: >
     mysqladmin -u root password "{{ mysql_root_password }}"
   when: 
     - mysql_root_password is defined 
     - mysql_root_password != ''
-    - mysql_root_password_check.rc == 0  # No password currently set
-  register: mysql_root_password_update
-  changed_when: mysql_root_password_update.rc == 0
-  failed_when: mysql_root_password_update.rc != 0 and mysql_root_password_update.rc != 1
-  no_log: true
-  tags: [mysql, install]
-
-# Change root password if current password is provided
-- name: (install) Change MySQL root password (password update)
-  ansible.builtin.command: >
-    mysqladmin -u root -p"{{ mysql_root_password_current }}" password "{{ mysql_root_password }}"
-  when: 
-    - mysql_root_password is defined 
-    - mysql_root_password != ''
-    - mysql_root_password_current is defined
-    - mysql_root_password_current != ''
-    - mysql_root_password_check.rc != 0  # Password is already set
-  register: mysql_root_password_change
-  changed_when: mysql_root_password_change.rc == 0
-  failed_when: mysql_root_password_change.rc != 0 and mysql_root_password_change.rc != 1
+    - "'auth_socket' not in mysql_auth_check.stdout"
+    - mysql_root_password_check is defined
+    - mysql_root_password_check.rc == 0
+  register: mysql_root_password_update_traditional
+  changed_when: mysql_root_password_update_traditional.rc == 0
+  failed_when: mysql_root_password_update_traditional.rc != 0 and mysql_root_password_update_traditional.rc != 1
   no_log: true
   tags: [mysql, install]
 
@@ -95,6 +103,7 @@
   when: mysql_root_password is defined and mysql_root_password != ''
   tags: [mysql, install]
 
+# Security cleanup - now that we have proper authentication
 - name: (install) Delete anonymous MySQL users
   community.mysql.mysql_user:
     name: ''
@@ -103,15 +112,32 @@
     login_user: root
     login_password: "{{ mysql_root_password }}"
   when: mysql_root_password is defined and mysql_root_password != ''
-  ignore_errors: true  # Might fail if users don't exist
+  ignore_errors: true
   tags: [mysql, install]
 
-- name: (install) Remove test database
+- name: (install) Remove MySQL test database
   community.mysql.mysql_db:
     name: test
     state: absent
     login_user: root
     login_password: "{{ mysql_root_password }}"
   when: mysql_root_password is defined and mysql_root_password != ''
-  ignore_errors: true  # Might fail if database doesn't exist
+  ignore_errors: true
+  tags: [mysql, install]
+
+# Remove root access from remote hosts for security
+- name: (install) Remove remote root access
+  community.mysql.mysql_user:
+    name: root
+    host: "{{ item }}"
+    state: absent
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  loop:
+    - "%"
+    - "127.0.0.1"
+    - "::1"
+    - "{{ ansible_hostname }}"
+  when: mysql_root_password is defined and mysql_root_password != ''
+  ignore_errors: true
   tags: [mysql, install]
