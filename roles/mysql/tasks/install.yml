@@ -45,14 +45,44 @@
     enabled: true
   tags: [mysql, install]
 
-- name: (install) Set root password
+# Check if MySQL root password is already set
+- name: (install) Check if MySQL root password is set
   ansible.builtin.command: >
-    mysqladmin -u root {{ (mysql_root_password_current is defined and mysql_root_password_current != '') | ternary('-p' + mysql_root_password_current, '') }} password {{ mysql_root_password }}
+    mysql -u root -e "SELECT 1"
+  register: mysql_root_password_check
+  ignore_errors: true
+  changed_when: false
+  no_log: true
+  tags: [mysql, install]
+
+# Set root password only if it's not already set and a password is provided
+- name: (install) Set MySQL root password (first time setup)
+  ansible.builtin.command: >
+    mysqladmin -u root password "{{ mysql_root_password }}"
+  when: 
+    - mysql_root_password is defined 
+    - mysql_root_password != ''
+    - mysql_root_password_check.rc == 0  # No password currently set
   register: mysql_root_password_update
   changed_when: mysql_root_password_update.rc == 0
   failed_when: mysql_root_password_update.rc != 0 and mysql_root_password_update.rc != 1
-  when: mysql_root_password is defined and mysql_root_password != ''
-  no_log: false
+  no_log: true
+  tags: [mysql, install]
+
+# Change root password if current password is provided
+- name: (install) Change MySQL root password (password update)
+  ansible.builtin.command: >
+    mysqladmin -u root -p"{{ mysql_root_password_current }}" password "{{ mysql_root_password }}"
+  when: 
+    - mysql_root_password is defined 
+    - mysql_root_password != ''
+    - mysql_root_password_current is defined
+    - mysql_root_password_current != ''
+    - mysql_root_password_check.rc != 0  # Password is already set
+  register: mysql_root_password_change
+  changed_when: mysql_root_password_change.rc == 0
+  failed_when: mysql_root_password_change.rc != 0 and mysql_root_password_change.rc != 1
+  no_log: true
   tags: [mysql, install]
 
 - name: (install) Copy .my.cnf file with root password credentials
@@ -73,6 +103,7 @@
     login_user: root
     login_password: "{{ mysql_root_password }}"
   when: mysql_root_password is defined and mysql_root_password != ''
+  ignore_errors: true  # Might fail if users don't exist
   tags: [mysql, install]
 
 - name: (install) Remove test database
@@ -82,4 +113,5 @@
     login_user: root
     login_password: "{{ mysql_root_password }}"
   when: mysql_root_password is defined and mysql_root_password != ''
+  ignore_errors: true  # Might fail if database doesn't exist
   tags: [mysql, install]
