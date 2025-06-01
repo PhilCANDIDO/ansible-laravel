@@ -5,7 +5,7 @@
 laravel_versions:
   "11":
     php:
-      version: "8.2"  # Laravel 11 requires PHP 8.2+
+      version: "8.2"  # Laravel 11 requires PHP 8.2+ (confirmed from Laravel docs)
       extensions:
         - bcmath
         - ctype
@@ -14,20 +14,20 @@ laravel_versions:
         - fileinfo
         - filter
         - hash
-        - json
+        # json is included in php-common since PHP 8.0+
         - mbstring
         - openssl
         - pcre
         - pdo
         - pdo_mysql
         - session
-        - tokenizer
+        # tokenizer functionality is part of php-common since PHP 8.0+
         - xml
         - zip
     composer:
       version: "latest"  # Always use the latest Composer version
     nodejs:
-      version: "20.x"    # Using LTS version for Node.js
+      version: "20.x"    # Using LTS version for Node.js (Laravel 11 compatible)
     databases:
       mysql:
         version: "8.0"
@@ -48,14 +48,14 @@ laravel_versions:
         - dom
         - fileinfo
         - filter
-        - json
+        # json is included in php-common since PHP 8.0+
         - mbstring
         - openssl
         - pcre
         - pdo
         - pdo_mysql
         - session
-        - tokenizer
+        # tokenizer functionality is part of php-common since PHP 8.0+
         - xml
         - zip
     composer:
