@@ -1,25 +1,20 @@
 ---
-# roles/nodejs/defaults/main.yml
-# Default variables for Node.js role
+# roles/nodejs/vars/default.yml
+# Default Node.js variables for unsupported distributions
 
-# Node.js version to install (corresponds to major version)
-nodejs_version: "20.x"
+# Node.js installation method
+nodejs_installation_method: "binary"  # Fallback to binary installation
 
-# Global npm packages to install
-nodejs_npm_global_packages: []
-  # Examples:
-  # - name: "@vue/cli"
-  # - name: "vite"
+# Package names (empty for binary installation)
+nodejs_packages: []
 
-# npm configuration values
-nodejs_npm_config_values: []
-  # Examples:
-  # - key: "save-exact"
-  #   value: "true"
-  # - key: "fund"
-  #   value: "false"
+# Service configuration
+nodejs_service_enabled: false
 
-# Global npm directory
-# nodejs_npm_global_dir: "/usr/local/lib/npm-global"
-# nodejs_npm_global_owner: root
-# nodejs_npm_global_group: root
+# NPM configuration
+npm_config_prefix: "/usr/local"
+npm_cache_dir: "/tmp/npm-cache"
+
+# Binary installation settings
+nodejs_binary_url: "https://nodejs.org/dist/v{{ nodejs_version | regex_replace('\\.x$', '.0') }}/node-v{{ nodejs_version | regex_replace('\\.x$', '.0') }}-linux-x64.tar.xz"
+nodejs_binary_install_dir: "/opt/nodejs"

@@ -12,7 +12,7 @@
     - "default.yml"
   tags: [nodejs, install]
 
-# Check if NodeJS is already installed with correct version
+# Check if Node.js is already installed with correct version
 - name: (install) Check if Node.js is installed
   ansible.builtin.command: node --version
   register: node_version_check
@@ -21,10 +21,24 @@
   check_mode: false
   tags: [nodejs, install]
 
+- name: (install) Parse current Node.js version
+  ansible.builtin.set_fact:
+    current_nodejs_major: "{{ node_version_check.stdout | regex_replace('^v(\\d+)\\..*', '\\1') }}"
+    target_nodejs_major: "{{ nodejs_version | regex_replace('(\\d+)\\.x', '\\1') }}"
+  when: node_version_check.rc == 0
+  tags: [nodejs, install]
+
+- name: (install) Set installation needed flag
+  ansible.builtin.set_fact:
+    nodejs_installation_needed: >-
+      {{ node_version_check.rc != 0 or 
+         (current_nodejs_major is defined and target_nodejs_major is defined and current_nodejs_major != target_nodejs_major) }}
+  tags: [nodejs, install]
+
 # Debian/Ubuntu installation
 - name: (install) Setup Node.js repository (Debian/Ubuntu)
   block:
-    - name: Install prerequisites for Node.js repo
+    - name: (install) Install prerequisites for Node.js repo
       ansible.builtin.apt:
         name:
           - apt-transport-https
@@ -32,52 +46,59 @@
           - curl
           - gnupg
         state: present
+        update_cache: true
+
+    - name: (install) Create keyrings directory
+      ansible.builtin.file:
+        path: /usr/share/keyrings
+        state: directory
+        mode: '0755'
 
     - name: (install) Add NodeSource GPG key
-      ansible.builtin.apt_key:
-        url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
-        state: present
+      ansible.builtin.get_url:
+        url: "{{ nodejs_repo_key_url }}"
+        dest: /usr/share/keyrings/nodesource.gpg
+        mode: '0644'
 
     - name: (install) Add NodeSource repository
       ansible.builtin.apt_repository:
-        repo: "deb https://deb.nodesource.com/node_{{ nodejs_version }} {{ ansible_distribution_release }} main"
+        repo: "deb [signed-by=/usr/share/keyrings/nodesource.gpg] {{ nodejs_repo_url }} {{ ansible_distribution_release }} main"
         state: present
         update_cache: true
   when: 
     - ansible_os_family == 'Debian'
-    - node_version_check.rc != 0 or (nodejs_version not in node_version_check.stdout)
+    - nodejs_installation_needed | bool
   tags: [nodejs, install]
 
 - name: (install) Install Node.js (Debian/Ubuntu)
   ansible.builtin.apt:
-    name: nodejs
+    name: "{{ nodejs_packages }}"
     state: present
+    update_cache: true
   when: 
     - ansible_os_family == 'Debian'
-    - node_version_check.rc != 0 or (nodejs_version not in node_version_check.stdout)
+    - nodejs_installation_needed | bool
   tags: [nodejs, install]
 
 # RHEL/CentOS installation
 - name: (install) Setup Node.js repository (RHEL/CentOS)
-  block:
-    - name: Add NodeSource repository
-      ansible.builtin.command: >
-        curl -sL https://rpm.nodesource.com/setup_{{ nodejs_version }} | bash -
-      args:
-        warn: false
-      changed_when: true
+  ansible.builtin.shell: |
+    curl -fsSL {{ nodejs_repo_script_url }} | bash -
+  args:
+    warn: false
   when: 
     - ansible_os_family == 'RedHat'
-    - node_version_check.rc != 0 or (nodejs_version not in node_version_check.stdout)
+    - nodejs_installation_needed | bool
+  changed_when: true
   tags: [nodejs, install]
 
 - name: (install) Install Node.js (RHEL/CentOS)
   ansible.builtin.package:
-    name: nodejs
+    name: "{{ nodejs_packages }}"
     state: present
   when: 
     - ansible_os_family == 'RedHat'
-    - node_version_check.rc != 0 or (nodejs_version not in node_version_check.stdout)
+    - nodejs_installation_needed | bool
   tags: [nodejs, install]
 
 # Verify installation
@@ -88,17 +109,27 @@
   check_mode: false
   tags: [nodejs, install]
 
-- name: (install) Display installed Node.js version
-  ansible.builtin.debug:
-    msg: "Installed Node.js version: {{ node_version_result.stdout }}"
+- name: (install) Verify npm installation
+  ansible.builtin.command: npm --version
+  register: npm_version_result
+  changed_when: false
+  check_mode: false
   tags: [nodejs, install]
 
-# Install npm packages if specified
+- name: (install) Display installed versions
+  ansible.builtin.debug:
+    msg: |
+      Node.js version: {{ node_version_result.stdout }}
+      npm version: {{ npm_version_result.stdout }}
+  tags: [nodejs, install]
+
+# Install global npm packages if specified
 - name: (install) Install global npm packages
   community.general.npm:
-    name: "{{ item }}"
+    name: "{{ item.name | default(item) }}"
+    version: "{{ item.version | default(omit) }}"
     global: true
     state: present
   loop: "{{ nodejs_npm_global_packages }}"
   when: nodejs_npm_global_packages | length > 0
-  tags: [nodejs, install]
+  tags: [nodejs, install, npm]
