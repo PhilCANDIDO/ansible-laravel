@@ -52,7 +52,7 @@
   changed_when: mysql_root_password_update.rc == 0
   failed_when: mysql_root_password_update.rc != 0 and mysql_root_password_update.rc != 1
   when: mysql_root_password is defined and mysql_root_password != ''
-  no_log: true
+  no_log: false
   tags: [mysql, install]
 
 - name: (install) Copy .my.cnf file with root password credentials

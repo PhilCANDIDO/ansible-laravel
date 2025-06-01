@@ -16,8 +16,8 @@
     path: "{{ nodejs_npm_global_dir }}"
     state: directory
     mode: '0755'
-    owner: "{{ nodejs_npm_global_owner | default(omit) }}"
-    group: "{{ nodejs_npm_global_group | default(omit) }}"
+    owner: "{{ nodejs_npm_global_owner if (nodejs_npm_global_owner is defined and nodejs_npm_global_owner != '') else omit }}"
+    group: "{{ nodejs_npm_global_group if (nodejs_npm_global_group is defined and nodejs_npm_global_group != '') else omit }}"
   when: 
     - nodejs_npm_global_dir is defined 
     - nodejs_npm_global_dir != ''
