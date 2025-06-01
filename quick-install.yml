@@ -1,0 +1,337 @@
+---
+# Quick installation playbook for Laravel 11 prerequisites
+# Minimal setup with sane defaults for development/staging
+
+- name: Quick Laravel 11 Prerequisites Installation
+  hosts: all
+  become: true
+  vars:
+    # Quick setup defaults
+    laravel_version: "11"
+    db_engine: "mysql"  # mysql, mariadb, or postgresql
+    enable_redis: true
+    webserver_type: "nginx"  # nginx or apache
+    
+    # Laravel app configuration
+    webserver_server_name: "{{ ansible_default_ipv4.address | default('localhost') }}"
+    webserver_laravel_root: "/var/www/laravel"
+    
+    # Security: Change these passwords!
+    mysql_root_password: "LaravelRoot2024!"
+    mysql_db_password: "LaravelApp2024!"
+    
+  vars_files:
+    - vars/versions.yml
+  
+  tasks:
+    - name: 🚀 Display quick installation info
+      ansible.builtin.debug:
+        msg: |
+          Quick Laravel {{ laravel_version }} Installation Starting...
+          📊 Database: {{ db_engine }}
+          🌐 Webserver: {{ webserver_type }}
+          📦 Redis: {{ enable_redis | ternary('enabled', 'disabled') }}
+          🏠 Laravel root: {{ webserver_laravel_root }}
+          
+          ⚠️  SECURITY: Change default passwords before production use!
+
+    # System preparation
+    - name: 📦 Update system packages
+      ansible.builtin.package:
+        update_cache: true
+        upgrade: true
+      when: ansible_os_family == "Debian"
+
+    - name: 🛠️ Install essential packages
+      ansible.builtin.package:
+        name:
+          - curl
+          - git
+          - unzip
+          - zip
+          - software-properties-common
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+        state: present
+      when: ansible_os_family == "Debian"
+
+    # PHP Installation
+    - name: 🐘 Add PHP repository (Ubuntu)
+      ansible.builtin.apt_repository:
+        repo: "ppa:ondrej/php"
+        state: present
+        update_cache: true
+      when: ansible_distribution == "Ubuntu"
+
+    - name: 🐘 Install PHP {{ laravel_versions[laravel_version].php.version }} and extensions
+      ansible.builtin.apt:
+        name:
+          - "php{{ laravel_versions[laravel_version].php.version }}"
+          - "php{{ laravel_versions[laravel_version].php.version }}-fpm"
+          - "php{{ laravel_versions[laravel_version].php.version }}-cli"
+          - "php{{ laravel_versions[laravel_version].php.version }}-common"
+          - "php{{ laravel_versions[laravel_version].php.version }}-mysql"
+          - "php{{ laravel_versions[laravel_version].php.version }}-zip"
+          - "php{{ laravel_versions[laravel_version].php.version }}-gd"
+          - "php{{ laravel_versions[laravel_version].php.version }}-mbstring"
+          - "php{{ laravel_versions[laravel_version].php.version }}-curl"
+          - "php{{ laravel_versions[laravel_version].php.version }}-xml"
+          - "php{{ laravel_versions[laravel_version].php.version }}-bcmath"
+          - "php{{ laravel_versions[laravel_version].php.version }}-intl"
+          - "php{{ laravel_versions[laravel_version].php.version }}-opcache"
+          - "php{{ laravel_versions[laravel_version].php.version }}-tokenizer"
+        state: present
+      when: ansible_os_family == "Debian"
+
+    # Composer Installation
+    - name: 🎼 Download Composer installer
+      ansible.builtin.get_url:
+        url: https://getcomposer.org/installer
+        dest: /tmp/composer-setup.php
+        mode: '0755'
+
+    - name: 🎼 Install Composer globally
+      ansible.builtin.command: >
+        php /tmp/composer-setup.php
+        --install-dir=/usr/local/bin
+        --filename=composer
+      args:
+        creates: /usr/local/bin/composer
+
+    # Node.js Installation
+    - name: 🟢 Add NodeSource repository
+      ansible.builtin.shell: |
+        curl -fsSL https://deb.nodesource.com/setup_{{ laravel_versions[laravel_version].nodejs.version }} | bash -
+      args:
+        warn: false
+      changed_when: true
+
+    - name: 🟢 Install Node.js
+      ansible.builtin.apt:
+        name: nodejs
+        state: present
+
+    # Database Installation (MySQL by default)
+    - name: 🗄️ Install MySQL server
+      ansible.builtin.apt:
+        name:
+          - mysql-server
+          - mysql-client
+          - python3-pymysql
+        state: present
+      when: db_engine == "mysql"
+
+    - name: 🗄️ Start and enable MySQL
+      ansible.builtin.service:
+        name: mysql
+        state: started
+        enabled: true
+      when: db_engine == "mysql"
+
+    - name: 🔐 Set MySQL root password
+      ansible.builtin.mysql_user:
+        name: root
+        password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        state: present
+      when: db_engine == "mysql"
+      no_log: true
+
+    - name: 🗄️ Create Laravel database
+      ansible.builtin.mysql_db:
+        name: "{{ mysql_db_name | default('laravel') }}"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+      when: db_engine == "mysql"
+
+    - name: 👤 Create Laravel database user
+      ansible.builtin.mysql_user:
+        name: "{{ mysql_db_user | default('laravel') }}"
+        password: "{{ mysql_db_password }}"
+        priv: "{{ mysql_db_name | default('laravel') }}.*:ALL"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+      when: db_engine == "mysql"
+      no_log: true
+
+    # Redis Installation (optional)
+    - name: 📦 Install Redis
+      ansible.builtin.apt:
+        name:
+          - redis-server
+          - redis-tools
+        state: present
+      when: enable_redis | bool
+
+    - name: 🚀 Start and enable Redis
+      ansible.builtin.service:
+        name: redis-server
+        state: started
+        enabled: true
+      when: enable_redis | bool
+
+    # Nginx Installation
+    - name: 🌐 Install Nginx
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+      when: webserver_type == "nginx"
+
+    - name: 🌐 Start and enable Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+      when: webserver_type == "nginx"
+
+    # Laravel directory setup
+    - name: 📁 Create Laravel application directory
+      ansible.builtin.file:
+        path: "{{ webserver_laravel_root }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: 📁 Create Laravel storage directories
+      ansible.builtin.file:
+        path: "{{ webserver_laravel_root }}/{{ item }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0775'
+      loop:
+        - "storage"
+        - "storage/app"
+        - "storage/app/public"
+        - "storage/framework"
+        - "storage/framework/cache"
+        - "storage/framework/sessions"
+        - "storage/framework/views"
+        - "storage/logs"
+        - "bootstrap/cache"
+        - "public"
+
+    # Basic Nginx configuration for Laravel
+    - name: ⚙️ Create Laravel Nginx configuration
+      ansible.builtin.copy:
+        content: |
+          server {
+              listen 80;
+              listen [::]:80;
+              server_name {{ webserver_server_name }};
+              root {{ webserver_laravel_root }}/public;
+
+              add_header X-Frame-Options "SAMEORIGIN";
+              add_header X-Content-Type-Options "nosniff";
+
+              index index.php;
+              charset utf-8;
+
+              location / {
+                  try_files $uri $uri/ /index.php?$query_string;
+              }
+
+              location = /favicon.ico { access_log off; log_not_found off; }
+              location = /robots.txt  { access_log off; log_not_found off; }
+
+              error_page 404 /index.php;
+
+              location ~ \.php$ {
+                  fastcgi_pass unix:/var/run/php/php{{ laravel_versions[laravel_version].php.version }}-fpm.sock;
+                  fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+                  include fastcgi_params;
+                  fastcgi_hide_header X-Powered-By;
+              }
+
+              location ~ /\.(?!well-known).* {
+                  deny all;
+              }
+          }
+        dest: "/etc/nginx/sites-available/{{ webserver_server_name }}"
+        backup: true
+      when: webserver_type == "nginx"
+      notify: reload nginx
+
+    - name: 🔗 Enable Laravel site
+      ansible.builtin.file:
+        src: "/etc/nginx/sites-available/{{ webserver_server_name }}"
+        dest: "/etc/nginx/sites-enabled/{{ webserver_server_name }}"
+        state: link
+      when: webserver_type == "nginx"
+      notify: reload nginx
+
+    - name: 🚫 Remove default Nginx site
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      when: webserver_type == "nginx"
+      notify: reload nginx
+
+    # PHP Configuration
+    - name: ⚙️ Configure PHP-FPM pool
+      ansible.builtin.lineinfile:
+        path: "/etc/php/{{ laravel_versions[laravel_version].php.version }}/fpm/pool.d/www.conf"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        backup: true
+      loop:
+        - { regexp: '^user = ', line: 'user = www-data' }
+        - { regexp: '^group = ', line: 'group = www-data' }
+        - { regexp: '^listen.owner = ', line: 'listen.owner = www-data' }
+        - { regexp: '^listen.group = ', line: 'listen.group = www-data' }
+      notify: restart php-fpm
+
+    # Create a simple test file
+    - name: 🧪 Create PHP info test file
+      ansible.builtin.copy:
+        content: |
+          <?php
+          echo "<h1>Laravel {{ laravel_version }} Environment Ready!</h1>";
+          echo "<h2>PHP Information</h2>";
+          phpinfo();
+        dest: "{{ webserver_laravel_root }}/public/info.php"
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    # Final status
+    - name: 🎉 Installation completed successfully
+      ansible.builtin.debug:
+        msg: |
+          
+          ✅ Laravel {{ laravel_version }} prerequisites installed successfully!
+          
+          🌐 Access your server: http://{{ webserver_server_name }}
+          🧪 Test PHP: http://{{ webserver_server_name }}/info.php
+          
+          📋 Next steps:
+          1. Clone your Laravel app to: {{ webserver_laravel_root }}
+          2. Configure .env with database credentials:
+             - DB_HOST=localhost
+             - DB_DATABASE={{ mysql_db_name | default('laravel') }}
+             - DB_USERNAME={{ mysql_db_user | default('laravel') }}
+             - DB_PASSWORD={{ mysql_db_password }}
+          3. Run: composer install
+          4. Run: php artisan key:generate
+          5. Run: php artisan migrate
+          
+          🔐 Database credentials:
+          - MySQL root password: {{ mysql_root_password }}
+          - Laravel DB password: {{ mysql_db_password }}
+          
+          ⚠️  Remember to change default passwords for production!
+
+  handlers:
+    - name: reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+
+    - name: restart php-fpm
+      ansible.builtin.service:
+        name: "php{{ laravel_versions[laravel_version].php.version }}-fpm"
+        state: restarted
