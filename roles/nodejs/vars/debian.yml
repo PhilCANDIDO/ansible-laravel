@@ -2,9 +2,6 @@
 # roles/nodejs/vars/debian.yml
 # Node.js variables for Debian-based distributions
 
-# Node.js installation method
-nodejs_installation_method: "repository"  # Options: repository, binary
-
 # Node.js repository configuration
 nodejs_repo_key_url: "https://deb.nodesource.com/gpgkey/nodesource.gpg.key"
 nodejs_repo_url: "https://deb.nodesource.com/node_{{ nodejs_version }}"
@@ -13,9 +10,12 @@ nodejs_repo_url: "https://deb.nodesource.com/node_{{ nodejs_version }}"
 nodejs_packages:
   - "nodejs"
 
-# Service configuration (if applicable)
-nodejs_service_enabled: false
+# Alternative installation methods for problematic distributions
+nodejs_snap_channel: "{{ nodejs_version | regex_replace('\\.x, '') }}/stable"
 
 # NPM configuration
-npm_config_prefix: "/usr/local"
+npm_config_prefix: "/usr/local/lib/npm-global"
 npm_cache_dir: "/tmp/npm-cache"
+
+# Distribution-specific settings
+nodejs_use_snap_for_ubuntu_24: true
