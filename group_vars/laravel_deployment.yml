@@ -1,0 +1,145 @@
+---
+# Laravel Deployment Default Variables
+# These variables can be overridden in host_vars or inventory
+
+# Laravel Application Configuration
+laravel_app_name: "Laravel Application"
+laravel_app_env: "production"
+laravel_app_debug: "false"
+laravel_app_key: ""  # Will be generated automatically if empty
+laravel_app_url: "http://{{ webserver_server_name | default('localhost') }}"
+
+# Laravel Database Configuration
+laravel_app_db_connection: "{{ db_engine | default('mysql') }}"
+laravel_app_db_host: "127.0.0.1"
+laravel_app_db_port: "{{ db_engine == 'postgresql' | ternary('5432', '3306') }}"
+laravel_app_db_database: "{{ db_engine == 'mysql' | ternary(mysql_db_name | default('laravel'), (db_engine == 'mariadb' | ternary(mariadb_db_name | default('laravel'), postgresql_db_name | default('laravel')))) }}"
+laravel_app_db_username: "{{ db_engine == 'mysql' | ternary(mysql_db_user | default('laravel'), (db_engine == 'mariadb' | ternary(mariadb_db_user | default('laravel'), postgresql_db_user | default('laravel')))) }}"
+laravel_app_db_password: "{{ db_engine == 'mysql' | ternary(mysql_db_password | default(''), (db_engine == 'mariadb' | ternary(mariadb_db_password | default(''), postgresql_db_password | default('')))) }}"
+
+# Laravel Redis Configuration
+laravel_app_redis_host: "{{ enable_redis | default(false) | ternary('127.0.0.1', 'null') }}"
+laravel_app_redis_password: "{{ redis_requirepass | default('null') }}"
+laravel_app_redis_port: "{{ enable_redis | default(false) | ternary('6379', 'null') }}"
+
+# Laravel Session Configuration
+laravel_session_driver: "{{ enable_redis | default(false) | ternary('redis', 'database') }}"
+laravel_session_lifetime: "120"
+laravel_session_encrypt: "false"
+laravel_session_path: "/"
+laravel_session_domain: "null"
+
+# Laravel Cache Configuration
+laravel_cache_store: "{{ enable_redis | default(false) | ternary('redis', 'database') }}"
+laravel_cache_prefix: "laravel_cache_"
+
+# Laravel Queue Configuration
+laravel_queue_connection: "{{ enable_redis | default(false) | ternary('redis', 'database') }}"
+
+# Laravel Mail Configuration
+laravel_mail_mailer: "log"
+laravel_mail_host: "127.0.0.1"
+laravel_mail_port: "2525"
+laravel_mail_username: "null"
+laravel_mail_password: "null"
+laravel_mail_encryption: "null"
+laravel_mail_from_address: "hello@{{ webserver_server_name | default('example.com') }}"
+laravel_mail_from_name: "{{ laravel_app_name }}"
+
+# Laravel Logging Configuration
+laravel_log_channel: "stack"
+laravel_log_level: "error"
+
+# Laravel Broadcasting Configuration
+laravel_broadcast_connection: "log"
+
+# Laravel Filesystem Configuration
+laravel_filesystem_disk: "local"
+
+# AWS Configuration (optional)
+laravel_aws_access_key_id: ""
+laravel_aws_secret_access_key: ""
+laravel_aws_default_region: "us-east-1"
+laravel_aws_bucket: ""
+laravel_aws_use_path_style_endpoint: "false"
+
+# Custom Environment Variables
+laravel_custom_env_vars: []
+  # Example:
+  # - key: "CUSTOM_API_KEY"
+  #   value: "your-api-key-here"
+  # - key: "THIRD_PARTY_URL"
+  #   value: "https://api.example.com"
+
+# Deployment specific settings
+laravel_deploy_optimize: true
+laravel_deploy_migrate: true
+laravel_deploy_seed: false
+laravel_deploy_build_assets: true
+laravel_deploy_clear_cache: true
+
+# Asset building configuration
+laravel_use_vite: true  # Set to false to use Laravel Mix
+laravel_npm_install_args: "--production"
+laravel_npm_build_command: "build"  # For Vite
+laravel_npm_build_command_mix: "production"  # For Laravel Mix
+
+# Artisan commands to run during deployment
+laravel_artisan_commands: []
+  # Example:
+  # - "php artisan horizon:terminate"  # If using Laravel Horizon
+  # - "php artisan schedule:clear-cache"
+  # - "php artisan telescope:clear"    # If using Laravel Telescope
+
+# Post-deployment tasks
+laravel_post_deploy_commands: []
+  # Example:
+  # - "sudo systemctl restart supervisor"  # If using queue workers
+  # - "sudo systemctl reload nginx"
+
+# Backup configuration (optional)
+laravel_backup_enabled: false
+laravel_backup_schedule: "0 2 * * *"  # Daily at 2 AM
+laravel_backup_retention_days: 7
+
+# Performance tuning
+laravel_opcache_enable: true
+laravel_composer_optimize: true
+laravel_config_cache: true
+laravel_route_cache: true
+laravel_view_cache: true
+laravel_event_cache: true
+
+# Security settings
+laravel_remove_default_routes: true  # Remove default Laravel routes in production
+laravel_secure_headers: true
+laravel_disable_server_signature: true
+
+# Monitoring and health checks
+laravel_health_check_enabled: true
+laravel_health_check_path: "/health"
+laravel_monitoring_enabled: false
+
+# Laravel-specific directories and files
+laravel_writable_dirs:
+  - "storage"
+  - "storage/app"
+  - "storage/app/public"
+  - "storage/framework"
+  - "storage/framework/cache"
+  - "storage/framework/sessions"
+  - "storage/framework/views"
+  - "storage/logs"
+  - "bootstrap/cache"
+
+laravel_protected_files:
+  - ".env"
+  - "composer.json"
+  - "composer.lock"
+  - "package.json"
+  - "package-lock.json"
+
+# Git deployment settings
+laravel_git_clean: true
+laravel_git_force_checkout: true
+laravel_git_depth: 1  # Shallow clone for faster deployment
