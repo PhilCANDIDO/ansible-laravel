@@ -1,20 +1,43 @@
 ---
-# roles/nodejs/vars/default.yml
-# Default Node.js variables for unsupported distributions
+# roles/nodejs/defaults/main.yml
+# Default Node.js variables for all distributions
 
-# Node.js installation method
-nodejs_installation_method: "binary"  # Fallback to binary installation
-
-# Package names (empty for binary installation)
-nodejs_packages: []
-
-# Service configuration
-nodejs_service_enabled: false
+# Node.js version (will be overridden by group_vars)
+nodejs_version: "20.x"
 
 # NPM configuration
-npm_config_prefix: "/usr/local"
-npm_cache_dir: "/tmp/npm-cache"
+nodejs_npm_global_dir: "/usr/local/lib/npm-global"
+nodejs_npm_cache_dir: "/tmp/npm-cache"
+nodejs_npm_registry: ""  # Use default registry
 
-# Binary installation settings
-nodejs_binary_url: "https://nodejs.org/dist/v{{ nodejs_version | regex_replace('\\.x$', '.0') }}/node-v{{ nodejs_version | regex_replace('\\.x$', '.0') }}-linux-x64.tar.xz"
+# NPM config values (key-value pairs)
+nodejs_npm_config_values: []
+  # Example:
+  # - key: "init-author-name"
+  #   value: "Your Name"
+  # - key: "init-author-email"
+  #   value: "your@email.com"
+
+# Global NPM packages to install
+nodejs_npm_global_packages: []
+  # Example:
+  # - name: "@vue/cli"
+  # - name: "vite"
+  # - name: "typescript"
+  #   version: "latest"
+
+# User configuration
+nodejs_configure_for_users: true
+nodejs_npm_global_owner: ""
+nodejs_npm_global_group: ""
+
+# Installation method preferences
+nodejs_force_snap: false
+nodejs_force_repository: false
+
+# Package names (distribution-specific, defined in vars/)
+nodejs_packages: []
+
+# Binary installation settings (fallback)
+nodejs_binary_url: "https://nodejs.org/dist/v{{ nodejs_version | regex_replace('\\.x, '.0') }}/node-v{{ nodejs_version | regex_replace('\\.x, '.0') }}-linux-x64.tar.xz"
 nodejs_binary_install_dir: "/opt/nodejs"

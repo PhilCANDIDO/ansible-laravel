@@ -5,7 +5,9 @@
 - name: (configure) Set npm configuration values
   ansible.builtin.command: npm config set {{ item.key }} {{ item.value }}
   loop: "{{ nodejs_npm_config_values }}"
-  when: nodejs_npm_config_values | length > 0
+  when: 
+    - nodejs_npm_config_values is defined
+    - nodejs_npm_config_values | length > 0
   changed_when: true
   tags: [nodejs, configure]
 
@@ -16,11 +18,55 @@
     mode: '0755'
     owner: "{{ nodejs_npm_global_owner | default(omit) }}"
     group: "{{ nodejs_npm_global_group | default(omit) }}"
-  when: nodejs_npm_global_dir is defined and nodejs_npm_global_dir != ''
+  when: 
+    - nodejs_npm_global_dir is defined 
+    - nodejs_npm_global_dir != ''
   tags: [nodejs, configure]
 
 - name: (configure) Configure npm to use global directory
   ansible.builtin.command: npm config set prefix {{ nodejs_npm_global_dir }}
-  when: nodejs_npm_global_dir is defined and nodejs_npm_global_dir != ''
+  when: 
+    - nodejs_npm_global_dir is defined 
+    - nodejs_npm_global_dir != ''
   changed_when: true
+  tags: [nodejs, configure]
+
+- name: (configure) Set npm cache directory
+  ansible.builtin.command: npm config set cache {{ nodejs_npm_cache_dir }}
+  when: 
+    - nodejs_npm_cache_dir is defined
+    - nodejs_npm_cache_dir != ''
+  changed_when: true
+  tags: [nodejs, configure]
+
+- name: (configure) Create npm cache directory
+  ansible.builtin.file:
+    path: "{{ nodejs_npm_cache_dir | default('/tmp/npm-cache') }}"
+    state: directory
+    mode: '0755'
+  tags: [nodejs, configure]
+
+- name: (configure) Set npm registry if specified
+  ansible.builtin.command: npm config set registry {{ nodejs_npm_registry }}
+  when: 
+    - nodejs_npm_registry is defined
+    - nodejs_npm_registry != ''
+  changed_when: true
+  tags: [nodejs, configure]
+
+- name: (configure) Configure npm for non-root users
+  block:
+    - name: (configure) Create .npmrc for non-root users
+      ansible.builtin.template:
+        src: npmrc.j2
+        dest: "/etc/skel/.npmrc"
+        mode: '0644'
+      
+    - name: (configure) Update PATH for npm global binaries
+      ansible.builtin.lineinfile:
+        path: /etc/environment
+        regexp: '^PATH='
+        line: 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:{{ nodejs_npm_global_dir | default("/usr/local/lib/npm-global") }}/bin"'
+        backup: true
+  when: nodejs_configure_for_users | default(true)
   tags: [nodejs, configure]
