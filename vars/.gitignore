@@ -1,0 +1,8 @@
+# Ignore all other files in the vars directory
+*
+# except for version.yml
+!version.yml
+# and the .gitignore file itself
+!.gitignore
+# and the example file
+!example*

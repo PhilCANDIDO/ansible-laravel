@@ -1,10 +1,57 @@
 ---
 # Deploy a Laravel application to servers
-# Fixed version that handles Git ownership issues
+# Supports application-specific variable files
 
 - name: Deploy Laravel Application
   hosts: all
   become: true
+  
+  # Pre-tasks to load application-specific variables
+  pre_tasks:
+    - name: Validate app_name parameter for application deployment
+      ansible.builtin.fail:
+        msg: |
+          ❌ Laravel application deployment requires the 'app_name' variable to be defined.
+          
+          Usage: ansible-playbook -i inventory/hosts.yml deploy-laravel.yml -e "app_name=neodatabase"
+          
+          This will automatically load variables from: vars/{{ app_name | default('UNDEFINED') }}.yml
+      when: app_name is not defined
+
+    - name: Check if application-specific variable file exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/vars/{{ app_name }}.yml"
+      register: app_vars_file
+      delegate_to: localhost
+      run_once: true
+
+    - name: Validate application variable file exists
+      ansible.builtin.fail:
+        msg: |
+          ❌ Application variable file not found: vars/{{ app_name }}.yml
+          
+          Please create the file vars/{{ app_name }}.yml with your application-specific variables.
+          You can use vars/example-app.yml as a template.
+      when: not app_vars_file.stat.exists
+
+    - name: Load application-specific variables
+      ansible.builtin.include_vars: "{{ playbook_dir }}/vars/{{ app_name }}.yml"
+
+    - name: Validate required application variables
+      ansible.builtin.assert:
+        that:
+          - webserver_server_name is defined
+          - webserver_laravel_root is defined
+          - app_repo_url is defined
+          - app_repo_branch is defined
+        fail_msg: |
+          ❌ Required variables missing in vars/{{ app_name }}.yml:
+          - webserver_server_name: Domain name for the application
+          - webserver_laravel_root: Path where the application will be installed
+          - app_repo_url: Git repository URL
+          - app_repo_branch: Git branch to deploy
+        success_msg: "✅ Required application variables validated"
+
   vars:
     # Define webserver user based on distribution and webserver type
     webserver_user: >-
@@ -22,60 +69,55 @@
     
     webserver_group: "{{ webserver_user }}"
     
-    # Set default values only if not already defined
-    _laravel_deploy_repo: "{{ laravel_deploy_repo | default('https://github.com/yourusername/your-laravel-app.git') }}"
-    _laravel_deploy_branch: "{{ laravel_deploy_branch | default('main') }}"
-    _laravel_deploy_dir: "{{ webserver_laravel_root | default('/var/www/laravel') }}"
+    # Use variables from application file
+    _laravel_deploy_repo: "{{ app_repo_url }}"
+    _laravel_deploy_branch: "{{ app_repo_branch }}"
+    _laravel_deploy_dir: "{{ webserver_laravel_root }}"
     _laravel_app_env: "{{ laravel_app_env | default('production') }}"
     _laravel_app_debug: "{{ laravel_app_debug | default('false') }}"
-    _laravel_app_url: "{{ laravel_app_url | default('https://' + webserver_server_name) }}"
+    _laravel_app_url: "{{ laravel_app_url }}"
     
-    # Database connection variables
-    _laravel_app_db_connection: "{{ db_engine }}"
-    _laravel_app_db_host: "127.0.0.1"
-    _laravel_app_db_port: "{{ db_engine == 'postgresql' | ternary('5432', '3306') }}"
-    _laravel_app_db_database: "{{ db_engine == 'mysql' | ternary(mysql_db_name, (db_engine == 'mariadb' | ternary(mariadb_db_name, postgresql_db_name))) }}"
-    _laravel_app_db_username: "{{ db_engine == 'mysql' | ternary(mysql_db_user, (db_engine == 'mariadb' | ternary(mariadb_db_user, postgresql_db_user))) }}"
-    _laravel_app_db_password: "{{ db_engine == 'mysql' | ternary(mysql_db_password, (db_engine == 'mariadb' | ternary(mariadb_db_password, postgresql_db_password))) }}"
+    # Database connection variables (from application variables)
+    _laravel_app_db_connection: "{{ laravel_app_db_connection }}"
+    _laravel_app_db_host: "{{ laravel_app_db_host }}"
+    _laravel_app_db_port: "{{ laravel_app_db_port }}"
+    _laravel_app_db_database: "{{ laravel_app_db_database }}"
+    _laravel_app_db_username: "{{ laravel_app_db_username }}"
+    _laravel_app_db_password: "{{ laravel_app_db_password }}"
     
-    # Redis configuration (if enabled)
-    _laravel_app_redis_host: "{{ enable_redis | ternary('127.0.0.1', 'null') }}"
-    _laravel_app_redis_password: "{{ redis_requirepass | default('null') }}"
-    _laravel_app_redis_port: "{{ enable_redis | ternary('6379', 'null') }}"
+    # Redis configuration
+    _laravel_app_redis_host: "{{ laravel_app_redis_host }}"
+    _laravel_app_redis_password: "{{ laravel_app_redis_password }}"
+    _laravel_app_redis_port: "{{ laravel_app_redis_port }}"
     
     # Laravel storage directories
-    laravel_storage_dirs:
-      - "bootstrap/cache"
-      - "storage/app"
-      - "storage/app/public"
-      - "storage/framework"
-      - "storage/framework/cache"
-      - "storage/framework/sessions"
-      - "storage/framework/views"
-      - "storage/logs"
+    laravel_storage_dirs: "{{ laravel_writable_dirs | default(['bootstrap/cache', 'storage/app', 'storage/app/public', 'storage/framework', 'storage/framework/cache', 'storage/framework/sessions', 'storage/framework/views', 'storage/logs']) }}"
 
   tasks:
     - name: 🚀 Display deployment information
       ansible.builtin.debug:
         msg: |
           🚀 Starting Laravel application deployment
+          📱 Application: {{ app_name }}
           📊 Repository: {{ _laravel_deploy_repo }}
+          🌿 Branch: {{ _laravel_deploy_branch }}
           📁 Deploy directory: {{ _laravel_deploy_dir }}
           👤 Webserver user: {{ webserver_user }}
           🌐 Environment: {{ _laravel_app_env }}
+          🌍 URL: {{ _laravel_app_url }}
 
     - name: 📦 Ensure Git is installed
       ansible.builtin.package:
         name: git
         state: present
       
-    # Fix Git ownership issues by ensuring proper directory setup
+    # Git configuration and deployment
     - name: 🔍 Check if deployment directory exists
       ansible.builtin.stat:
         path: "{{ _laravel_deploy_dir }}"
       register: deploy_dir_stat
 
-    - name: 🧹 Clean existing directory if it exists and has Git issues
+    - name: 🧹 Clean existing directory if needed
       block:
         - name: 🗑️ Remove existing directory (backup first if needed)
           ansible.builtin.file:
@@ -102,7 +144,6 @@
         group: "{{ webserver_group }}"
         mode: '0755'
 
-    # Configure Git safe directory globally to prevent ownership issues
     - name: ⚙️ Configure Git safe directory globally
       ansible.builtin.command: |
         git config --global --add safe.directory {{ _laravel_deploy_dir }}
@@ -115,7 +156,6 @@
       become_user: "{{ webserver_user }}"
       changed_when: true
 
-    # Clone or update repository with proper error handling
     - name: 📥 Clone or update Laravel repository
       ansible.builtin.git:
         repo: "{{ _laravel_deploy_repo }}"
@@ -123,6 +163,7 @@
         version: "{{ _laravel_deploy_branch }}"
         force: "{{ laravel_git_force_checkout | default(true) | bool }}"
         depth: "{{ laravel_git_depth | default(1) }}"
+        key_file: "{{ app_repo_deploy_key | default(omit) }}"
       become: true
       become_user: "{{ webserver_user }}"
       register: git_clone_result
@@ -162,7 +203,7 @@
         force: false
       when: env_example_file.stat.exists
     
-    - name: ⚙️ Configure Laravel .env file
+    - name: ⚙️ Configure Laravel .env file - Basic settings
       ansible.builtin.lineinfile:
         path: "{{ _laravel_deploy_dir }}/.env"
         regexp: "{{ item.regexp }}"
@@ -172,22 +213,84 @@
         mode: '0640'
         create: true
       loop:
-        - { regexp: '^APP_NAME=', line: 'APP_NAME="{{ laravel_app_name | default("Laravel") }}"' }
+        - { regexp: '^APP_NAME=', line: 'APP_NAME="{{ laravel_app_name }}"' }
         - { regexp: '^APP_ENV=', line: 'APP_ENV={{ _laravel_app_env }}' }
         - { regexp: '^APP_DEBUG=', line: 'APP_DEBUG={{ _laravel_app_debug }}' }
         - { regexp: '^APP_URL=', line: 'APP_URL={{ _laravel_app_url }}' }
+        - { regexp: '^APP_TIMEZONE=', line: 'APP_TIMEZONE={{ laravel_app_timezone | default("UTC") }}' }
+      notify: Clear Laravel configuration cache
+
+    - name: ⚙️ Configure Laravel .env file - Database settings
+      ansible.builtin.lineinfile:
+        path: "{{ _laravel_deploy_dir }}/.env"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        mode: '0640'
+      loop:
         - { regexp: '^DB_CONNECTION=', line: 'DB_CONNECTION={{ _laravel_app_db_connection }}' }
         - { regexp: '^DB_HOST=', line: 'DB_HOST={{ _laravel_app_db_host }}' }
         - { regexp: '^DB_PORT=', line: 'DB_PORT={{ _laravel_app_db_port }}' }
         - { regexp: '^DB_DATABASE=', line: 'DB_DATABASE={{ _laravel_app_db_database }}' }
         - { regexp: '^DB_USERNAME=', line: 'DB_USERNAME={{ _laravel_app_db_username }}' }
         - { regexp: '^DB_PASSWORD=', line: 'DB_PASSWORD={{ _laravel_app_db_password }}' }
+      notify: Clear Laravel configuration cache
+
+    - name: ⚙️ Configure Laravel .env file - Redis settings
+      ansible.builtin.lineinfile:
+        path: "{{ _laravel_deploy_dir }}/.env"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        mode: '0640'
+      loop:
         - { regexp: '^REDIS_HOST=', line: 'REDIS_HOST={{ _laravel_app_redis_host }}' }
         - { regexp: '^REDIS_PASSWORD=', line: 'REDIS_PASSWORD={{ _laravel_app_redis_password }}' }
         - { regexp: '^REDIS_PORT=', line: 'REDIS_PORT={{ _laravel_app_redis_port }}' }
       notify: Clear Laravel configuration cache
+
+    - name: ⚙️ Configure Laravel .env file - Session, Cache, Queue
+      ansible.builtin.lineinfile:
+        path: "{{ _laravel_deploy_dir }}/.env"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        mode: '0640'
+      loop:
+        - { regexp: '^SESSION_DRIVER=', line: 'SESSION_DRIVER={{ laravel_session_driver | default("database") }}' }
+        - { regexp: '^SESSION_LIFETIME=', line: 'SESSION_LIFETIME={{ laravel_session_lifetime | default("120") }}' }
+        - { regexp: '^CACHE_STORE=', line: 'CACHE_STORE={{ laravel_cache_store | default("database") }}' }
+        - { regexp: '^CACHE_PREFIX=', line: 'CACHE_PREFIX={{ laravel_cache_prefix | default(app_name + "_cache_") }}' }
+        - { regexp: '^QUEUE_CONNECTION=', line: 'QUEUE_CONNECTION={{ laravel_queue_connection | default("database") }}' }
+      when: laravel_session_driver is defined or laravel_cache_store is defined or laravel_queue_connection is defined
+      notify: Clear Laravel configuration cache
+
+    - name: ⚙️ Configure Laravel .env file - Mail settings
+      ansible.builtin.lineinfile:
+        path: "{{ _laravel_deploy_dir }}/.env"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        mode: '0640'
+      loop:
+        - { regexp: '^MAIL_MAILER=', line: 'MAIL_MAILER={{ laravel_mail_mailer | default("log") }}' }
+        - { regexp: '^MAIL_HOST=', line: 'MAIL_HOST={{ laravel_mail_host | default("127.0.0.1") }}' }
+        - { regexp: '^MAIL_PORT=', line: 'MAIL_PORT={{ laravel_mail_port | default("2525") }}' }
+        - { regexp: '^MAIL_USERNAME=', line: 'MAIL_USERNAME={{ laravel_mail_username | default("null") }}' }
+        - { regexp: '^MAIL_PASSWORD=', line: 'MAIL_PASSWORD={{ laravel_mail_password | default("null") }}' }
+        - { regexp: '^MAIL_ENCRYPTION=', line: 'MAIL_ENCRYPTION={{ laravel_mail_encryption | default("null") }}' }
+        - { regexp: '^MAIL_FROM_ADDRESS=', line: 'MAIL_FROM_ADDRESS={{ laravel_mail_from_address | default("hello@localhost") }}' }
+        - { regexp: '^MAIL_FROM_NAME=', line: 'MAIL_FROM_NAME="{{ laravel_mail_from_name | default(laravel_app_name) }}"' }
+      when: laravel_mail_mailer is defined
+      notify: Clear Laravel configuration cache
+
+    - name: ⚙️ Configure Laravel .env file - Custom variables
+      ansible.builtin.lineinfile:
+        path: "{{ _laravel_deploy_dir }}/.env"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+        mode: '0640'
+      loop: "{{ laravel_custom_env_vars | default([]) }}"
+      when: laravel_custom_env_vars is defined and laravel_custom_env_vars | length > 0
+      notify: Clear Laravel configuration cache
     
-    # Composer installation with better error handling
+    # Composer installation
     - name: 🎼 Install Composer dependencies
       ansible.builtin.command:
         cmd: composer install {{ laravel_composer_optimize | default(true) | ternary('--optimize-autoloader', '') }} --no-dev --no-interaction
@@ -213,7 +316,7 @@
       changed_when: "'Application key set successfully' in key_generate.stdout"
       when: laravel_app_key is not defined or laravel_app_key == ""
       
-    # Database operations with proper checks
+    # Database operations
     - name: 🔍 Check database connection
       ansible.builtin.command:
         cmd: php artisan db:show
@@ -248,7 +351,6 @@
         - laravel_deploy_migrate | default(true) | bool
         - migration_status.rc == 0
       
-    # Database seeding (optional)
     - name: 🌱 Run database seeder
       ansible.builtin.command:
         cmd: php artisan db:seed --force
@@ -268,7 +370,7 @@
       args:
         creates: "{{ _laravel_deploy_dir }}/public/storage"
     
-    # Asset building with Vite/Mix detection
+    # Asset building
     - name: 🔍 Check if package.json exists
       ansible.builtin.stat:
         path: "{{ _laravel_deploy_dir }}/package.json"
@@ -323,7 +425,7 @@
       changed_when: true
       failed_when: false
 
-    # Laravel optimization commands
+    # Laravel optimization
     - name: 🚀 Clear existing caches
       ansible.builtin.command:
         cmd: php artisan optimize:clear
@@ -341,7 +443,7 @@
       when: laravel_deploy_optimize | default(true) | bool
       notify: Restart PHP-FPM
 
-    # Run custom artisan commands
+    # Custom artisan commands
     - name: ⚙️ Run custom Artisan commands
       ansible.builtin.command:
         cmd: "{{ item }}"
@@ -383,7 +485,7 @@
         - ".env.example"
       when: _laravel_app_env == 'production' and laravel_remove_default_routes | default(true) | bool
 
-    # Run post-deployment commands
+    # Post-deployment commands
     - name: 🏁 Run post-deployment commands
       ansible.builtin.command:
         cmd: "{{ item }}"
@@ -393,9 +495,10 @@
     - name: 🎉 Display deployment completion summary
       ansible.builtin.debug:
         msg: |
-          🎉 Laravel application deployment completed successfully!
+          🎉 Laravel application {{ app_name }} deployed successfully!
           
-          📍 Application Details:
+          📱 Application Details:
+          ├── Name: {{ app_name }}
           ├── URL: {{ _laravel_app_url }}
           ├── Path: {{ _laravel_deploy_dir }}
           ├── Environment: {{ _laravel_app_env }}
@@ -403,7 +506,7 @@
           └── User: {{ webserver_user }}
           
           🔄 Actions Performed:
-          ├── Repository cloned/updated ✅
+          ├── Repository cloned/updated from {{ _laravel_deploy_branch }} ✅
           ├── Dependencies installed ✅
           ├── Application key {{ laravel_app_key is defined | ternary('configured', 'generated') }} ✅
           ├── Database {{ db_connection_check.rc == 0 | ternary('connected', 'skipped (check connection)') }} {{ migrations is defined and migrations.changed | ternary('& migrated', '') }} ✅
@@ -411,7 +514,7 @@
           ├── Assets {{ package_json_file.stat.exists | ternary('compiled', 'skipped (no package.json)') }} ✅
           └── Application optimized ✅
           
-          🌐 Your Laravel application is now live!
+          🌐 Your {{ app_name }} application is now live!
           
           {% if db_connection_check.rc != 0 %}
           ⚠️  Database connection failed. Please check your database configuration and credentials.
