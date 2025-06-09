@@ -289,6 +289,45 @@
       loop: "{{ laravel_custom_env_vars | default([]) }}"
       when: laravel_custom_env_vars is defined and laravel_custom_env_vars | length > 0
       notify: Clear Laravel configuration cache
+
+    # Handle Telescope issue before Composer installation
+    - name: 🔍 Check if Telescope service provider exists
+      ansible.builtin.stat:
+        path: "{{ _laravel_deploy_dir }}/app/Providers/TelescopeServiceProvider.php"
+      register: telescope_provider_check
+      
+    - name: 🔧 Fix Telescope service provider for production
+      ansible.builtin.replace:
+        path: "{{ _laravel_deploy_dir }}/app/Providers/TelescopeServiceProvider.php"
+        regexp: 'class TelescopeServiceProvider extends TelescopeApplicationServiceProvider'
+        replace: 'class TelescopeServiceProvider extends ServiceProvider'
+        backup: true
+      when: 
+        - telescope_provider_check.stat.exists
+        - _laravel_app_env == 'production'
+      
+    - name: 🔧 Add Telescope class check in service provider
+      ansible.builtin.blockinfile:
+        path: "{{ _laravel_deploy_dir }}/app/Providers/TelescopeServiceProvider.php"
+        marker: "    // {mark} ANSIBLE MANAGED TELESCOPE FIX"
+        insertafter: 'public function register()'
+        block: |
+          if (!class_exists(\Laravel\Telescope\TelescopeApplicationServiceProvider::class)) {
+              return;
+          }
+      when: 
+        - telescope_provider_check.stat.exists
+        - _laravel_app_env == 'production'
+        
+    - name: 🔍 Check environment-specific Composer install approach
+      ansible.builtin.set_fact:
+        composer_install_flags: >-
+          {{
+            _laravel_app_env == 'production' | ternary(
+              '--no-dev --optimize-autoloader --no-interaction',
+              '--optimize-autoloader --no-interaction'
+            )
+          }}
     
     # Composer installation
     - name: 🎼 Install Composer dependencies
