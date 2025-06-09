@@ -47,8 +47,13 @@ host    replication     all             ::1/128                 md5
 #------------------------------------------------------------------------------
 
 {% for entry in postgresql_hba_entries %}
-{{ entry.type | ljust(8) }}{{ entry.database | ljust(16) }}{{ entry.user | ljust(16) }}{% if entry.address is defined %}{{ entry.address | ljust(24) }}{% else %}{{ '' | ljust(24) }}{% endif %}{{ entry.auth_method }}{% if entry.options is defined %} {{ entry.options | join(' ') }}{% endif %}
+{% if entry.address is defined %}
+{{ entry.type }}	{{ entry.database }}	{{ entry.user }}	{{ entry.address }}	{{ entry.auth_method }}{% if entry.options is defined %} {{ entry.options | join(' ') }}{% endif %}
 
+{% else %}
+{{ entry.type }}	{{ entry.database }}	{{ entry.user }}		{{ entry.auth_method }}{% if entry.options is defined %} {{ entry.options | join(' ') }}{% endif %}
+
+{% endif %}
 {% endfor %}
 
 #------------------------------------------------------------------------------
