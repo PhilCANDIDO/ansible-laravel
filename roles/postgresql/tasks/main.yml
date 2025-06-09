@@ -1,8 +1,24 @@
 ---
-# postgresql role main tasks file
-- name: Include installation tasks
-  ansible.builtin.include_tasks: install.yml
+# roles/postgresql/tasks/main.yml
+# PostgreSQL role main tasks file - FIXED
 
-- name: Include configuration tasks
+- name: (main) Display PostgreSQL installation information
+  ansible.builtin.debug:
+    msg: |
+      🐘 Starting PostgreSQL {{ postgresql_version }} installation and configuration
+      📊 Target OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+      🎯 Server: {{ inventory_hostname }}
+      {% if postgresql_db_name is defined and postgresql_db_name != '' %}
+      🗃️ Laravel database: {{ postgresql_db_name }}
+      👤 Laravel user: {{ postgresql_db_user }}
+      {% endif %}
+  tags: [postgresql, always]
+
+- name: (main) Include installation tasks
+  ansible.builtin.include_tasks: install.yml
+  tags: [postgresql, install]
+
+- name: (main) Include configuration tasks
   ansible.builtin.include_tasks: configure.yml
   when: configure_postgresql | default(true) | bool
+  tags: [postgresql, configure]

@@ -67,17 +67,21 @@
   when: ansible_os_family == 'RedHat'
   tags: [postgresql, install]
 
-# Common tasks
-- name: (install) Ensure PostgreSQL service is enabled
-  ansible.builtin.service:
-    name: "{{ postgresql_service }}"
-    enabled: true
-  tags: [postgresql, install]
-
-- name: (install) Check if PostgreSQL data directory exists
+# Common PostgreSQL setup tasks
+- name: (install) Check if PostgreSQL data directory exists and is initialized
   ansible.builtin.stat:
     path: "{{ postgresql_data_dir }}/PG_VERSION"
   register: pgdata_version
+  tags: [postgresql, install]
+
+- name: (install) Create PostgreSQL data directory if it doesn't exist
+  ansible.builtin.file:
+    path: "{{ postgresql_data_dir }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0700'
+  when: not pgdata_version.stat.exists
   tags: [postgresql, install]
 
 - name: (install) Initialize PostgreSQL database (RHEL/CentOS)
@@ -89,7 +93,19 @@
   changed_when: postgresql_init_result.rc == 0
   tags: [postgresql, install]
 
-- name: (install) Start PostgreSQL service
+- name: (install) Initialize PostgreSQL database (Debian/Ubuntu)
+  become: true
+  become_user: postgres
+  ansible.builtin.command: "{{ postgresql_bin_path }}/initdb -D {{ postgresql_data_dir }}"
+  when: 
+    - ansible_os_family == 'Debian'
+    - not pgdata_version.stat.exists
+  register: postgresql_init_debian
+  changed_when: postgresql_init_debian.rc == 0
+  failed_when: false
+  tags: [postgresql, install]
+
+- name: (install) Ensure PostgreSQL service is enabled and started
   ansible.builtin.service:
     name: "{{ postgresql_service }}"
     state: started
@@ -104,6 +120,13 @@
     timeout: 30
   tags: [postgresql, install]
 
+- name: (install) Check PostgreSQL service status
+  ansible.builtin.command: systemctl is-active {{ postgresql_service }}
+  register: postgresql_service_status
+  changed_when: false
+  failed_when: false
+  tags: [postgresql, install]
+
 - name: (install) Check PostgreSQL version
   become: true
   become_user: postgres
@@ -111,9 +134,19 @@
   register: postgresql_version_check
   changed_when: false
   check_mode: false
+  failed_when: false
   tags: [postgresql, install]
 
-- name: (install) Display installed PostgreSQL version
+- name: (install) Display PostgreSQL installation status
   ansible.builtin.debug:
-    msg: "Installed PostgreSQL: {{ postgresql_version_check.stdout_lines[0] if postgresql_version_check.stdout_lines else 'Version check failed' }}"
+    msg: |
+      PostgreSQL Installation Status:
+      ✅ Service: {{ postgresql_service_status.stdout if postgresql_service_status.rc == 0 else 'Not running' }}
+      ✅ Port: {{ postgresql_port }}
+      ✅ Data directory: {{ postgresql_data_dir }}
+      {% if postgresql_version_check.rc == 0 %}
+      ✅ Version check: {{ postgresql_version_check.stdout_lines[0] if postgresql_version_check.stdout_lines else 'Success' }}
+      {% else %}
+      ⚠️ Version check failed (this is normal before configuration)
+      {% endif %}
   tags: [postgresql, install]

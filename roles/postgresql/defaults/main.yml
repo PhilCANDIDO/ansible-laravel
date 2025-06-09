@@ -1,37 +1,53 @@
 ---
 # roles/postgresql/defaults/main.yml
-# Default variables for PostgreSQL role
+# Default variables for PostgreSQL role - FIXED
 
-# PostgreSQL version
+# PostgreSQL version (compatible with Laravel 11)
 postgresql_version: "15"
 
-# PostgreSQL admin password
+# PostgreSQL admin password (MUST be set in inventory or vault)
 postgresql_admin_password: ""
 
-# PostgreSQL database for Laravel
-postgresql_db_name: "laravel"
-postgresql_db_user: "laravel"
-postgresql_db_password: ""
+# Laravel database configuration (optional - only created if specified)
+postgresql_db_name: ""  # Set to database name to create Laravel database
+postgresql_db_user: ""  # Set to username to create Laravel user
+postgresql_db_password: ""  # Set to password for Laravel user
 postgresql_db_encoding: "UTF8"
 postgresql_db_lc_collate: "en_US.UTF-8"
 postgresql_db_lc_ctype: "en_US.UTF-8"
 
-# PostgreSQL configuration
+# Connection settings
 postgresql_listen_addresses: "localhost"
 postgresql_port: 5432
 postgresql_max_connections: 100
-postgresql_shared_buffers: "128MB"
+
+# Memory settings
+postgresql_shared_buffers: "256MB"
 postgresql_work_mem: "4MB"
 postgresql_maintenance_work_mem: "64MB"
-postgresql_effective_cache_size: "4GB"
+postgresql_effective_cache_size: "1GB"
+
+# WAL settings
 postgresql_max_wal_size: "1GB"
 postgresql_min_wal_size: "80MB"
 postgresql_wal_buffers: "16MB"
 postgresql_checkpoint_completion_target: 0.7
+
+# Query planner settings
 postgresql_random_page_cost: 4.0
 postgresql_effective_io_concurrency: 2
 
-# Client authentication
+# Logging settings
+postgresql_log_destination: "stderr"
+postgresql_logging_collector: "on"
+postgresql_log_directory: "log"
+postgresql_log_filename: "postgresql-%Y-%m-%d_%H%M%S.log"
+postgresql_log_min_duration_statement: 1000
+postgresql_log_connections: "on"
+postgresql_log_disconnections: "on"
+postgresql_log_statement: "ddl"
+
+# Client authentication (pg_hba.conf entries)
 postgresql_hba_entries:
   - type: local
     database: all
@@ -51,3 +67,33 @@ postgresql_hba_entries:
     user: all
     address: ::1/128
     auth_method: md5
+
+# Locale settings
+postgresql_timezone: "UTC"
+postgresql_datestyle: "iso, mdy"
+postgresql_lc_messages: "en_US.UTF-8"
+postgresql_lc_monetary: "en_US.UTF-8"
+postgresql_lc_numeric: "en_US.UTF-8"
+postgresql_lc_time: "en_US.UTF-8"
+postgresql_default_text_search_config: "pg_catalog.english"
+
+# Performance tuning based on Laravel requirements
+postgresql_enable_performance_tuning: true
+postgresql_laravel_optimized: true
+
+# Default PostgreSQL variables when distribution-specific files are not found
+
+postgresql_packages:
+  - "postgresql"
+  - "postgresql-client"
+  - "postgresql-contrib"
+
+# Generic service name
+postgresql_service: "postgresql"
+
+# Generic paths (will likely need adjustment per distribution)
+postgresql_config_path: "/etc/postgresql"
+postgresql_data_dir: "/var/lib/postgresql/data"
+postgresql_bin_path: "/usr/bin"
+postgresql_log_directory: "/var/log/postgresql"
+postgresql_unix_socket_directories: "/var/run/postgresql"

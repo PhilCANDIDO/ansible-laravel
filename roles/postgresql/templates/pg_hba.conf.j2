@@ -1,19 +1,40 @@
 # PostgreSQL client authentication configuration file
 # Managed by Ansible - DO NOT EDIT MANUALLY
+# Optimized for Laravel 11 applications
 
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+#------------------------------------------------------------------------------
+# LOCAL CONNECTIONS (Unix domain sockets)
+#------------------------------------------------------------------------------
 
 # "local" is for Unix domain socket connections only
 local   all             postgres                                peer
 local   all             all                                     md5
 
-# IPv4 local connections:
+#------------------------------------------------------------------------------
+# IPv4 LOCAL CONNECTIONS
+#------------------------------------------------------------------------------
+
+# IPv4 local connections for PostgreSQL superuser
 host    all             postgres        127.0.0.1/32            md5
+
+# IPv4 local connections for all users (Laravel applications)
 host    all             all             127.0.0.1/32            md5
 
-# IPv6 local connections:
+#------------------------------------------------------------------------------
+# IPv6 LOCAL CONNECTIONS
+#------------------------------------------------------------------------------
+
+# IPv6 local connections for PostgreSQL superuser
 host    all             postgres        ::1/128                 md5
+
+# IPv6 local connections for all users (Laravel applications)
 host    all             all             ::1/128                 md5
+
+#------------------------------------------------------------------------------
+# REPLICATION CONNECTIONS
+#------------------------------------------------------------------------------
 
 # Allow replication connections from localhost, by a user with the
 # replication privilege.
@@ -21,7 +42,35 @@ local   replication     all                                     peer
 host    replication     all             127.0.0.1/32            md5
 host    replication     all             ::1/128                 md5
 
+#------------------------------------------------------------------------------
+# CUSTOM ENTRIES FROM ANSIBLE VARIABLES
+#------------------------------------------------------------------------------
+
 {% for entry in postgresql_hba_entries %}
-{{ entry.type }}    {{ entry.database }}    {{ entry.user }}    {% if entry.address is defined %}{{ entry.address }}{% endif %}    {{ entry.auth_method }}    {% if entry.options is defined %}{% for key, value in entry.options.items() %}{{ key }}={{ value }}{% if not loop.last %} {% endif %}{% endfor %}{% endif %}
+{{ entry.type | ljust(8) }}{{ entry.database | ljust(16) }}{{ entry.user | ljust(16) }}{% if entry.address is defined %}{{ entry.address | ljust(24) }}{% else %}{{ '' | ljust(24) }}{% endif %}{{ entry.auth_method }}{% if entry.options is defined %} {{ entry.options | join(' ') }}{% endif %}
 
 {% endfor %}
+
+#------------------------------------------------------------------------------
+# DEVELOPMENT/STAGING SPECIFIC ENTRIES
+#------------------------------------------------------------------------------
+
+{% if ansible_hostname is search("dev") or ansible_hostname is search("development") or ansible_hostname is search("staging") %}
+# Development/Staging: Allow connections from local network (adjust as needed)
+# host    all             all             192.168.1.0/24          md5
+# host    all             all             10.0.0.0/8              md5
+{% endif %}
+
+#------------------------------------------------------------------------------
+# SECURITY NOTES
+#------------------------------------------------------------------------------
+
+# For production environments:
+# 1. Restrict access to specific IP addresses instead of 0.0.0.0/0
+# 2. Use certificate-based authentication for sensitive applications
+# 3. Consider using SSL/TLS encryption for remote connections
+# 4. Regularly review and audit authentication logs
+#
+# Example production entries:
+# host    laravel_prod    laravel_user    10.0.1.100/32           md5
+# hostssl all             all             0.0.0.0/0               cert clientcert=1

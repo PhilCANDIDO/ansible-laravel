@@ -1,6 +1,6 @@
 ---
 # roles/postgresql/vars/debian.yml
-# PostgreSQL variables for Debian-based distributions
+# PostgreSQL variables for Debian-based distributions - FIXED
 
 postgresql_packages:
   - "postgresql-{{ postgresql_version }}"
@@ -9,7 +9,20 @@ postgresql_packages:
   - "libpq-dev"
   - "python3-psycopg2"  # For Ansible PostgreSQL modules
 
-postgresql_service: "postgresql@{{ postgresql_version }}-main"
+# Service name for different PostgreSQL versions on Debian
+postgresql_service: "postgresql"  # Use the main service, not version-specific
+
+# Configuration paths
 postgresql_config_path: "/etc/postgresql/{{ postgresql_version }}/main"
 postgresql_data_dir: "/var/lib/postgresql/{{ postgresql_version }}/main"
 postgresql_bin_path: "/usr/lib/postgresql/{{ postgresql_version }}/bin"
+
+# Log path
+postgresql_log_directory: "/var/log/postgresql"
+
+# Socket directory
+postgresql_unix_socket_directories: "/var/run/postgresql"
+
+# Cluster information (Debian-specific)
+postgresql_cluster_name: "main"
+postgresql_cluster_version: "{{ postgresql_version }}"
