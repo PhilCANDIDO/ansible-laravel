@@ -1,0 +1,63 @@
+---
+# roles/laravel_telescope/tasks/install.yml
+# Laravel Telescope installation tasks
+
+- name: (install) Check if Telescope is already installed
+  ansible.builtin.command:
+    cmd: composer show laravel/telescope
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  register: telescope_check
+  failed_when: false
+  changed_when: false
+  tags: [telescope, check]
+
+- name: (install) Install Laravel Telescope via Composer
+  ansible.builtin.command:
+    cmd: >
+      composer require laravel/telescope
+      {{ laravel_telescope_dev_only | default(false) | ternary('--dev', '') }}
+      --no-interaction
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  environment:
+    COMPOSER_ALLOW_SUPERUSER: "1"
+    COMPOSER_MEMORY_LIMIT: "-1"
+  when: telescope_check.rc != 0
+  register: telescope_install_result
+  tags: [telescope, install]
+
+- name: (install) Publish Telescope assets and migrations
+  ansible.builtin.command:
+    cmd: php artisan telescope:install
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: telescope_check.rc != 0 or telescope_install_result is changed
+  register: telescope_publish_result
+  tags: [telescope, publish]
+
+- name: (install) Run Telescope migrations
+  ansible.builtin.command:
+    cmd: php artisan migrate --force
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: telescope_publish_result is changed
+  register: telescope_migrations
+  tags: [telescope, migrate]
+
+- name: (install) Schedule Telescope pruning command
+  ansible.builtin.cron:
+    name: "Laravel Telescope Pruning"
+    cron_file: laravel_telescope
+    minute: "0"
+    hour: "{{ laravel_telescope_prune_hour | default('2') }}"
+    job: "cd {{ laravel_deploy_path }} && php artisan telescope:prune --hours={{ laravel_telescope_retention_hours | default('48') }}"
+    user: "{{ laravel_deploy_user }}"
+  when: 
+    - laravel_telescope_auto_prune | default(true) | bool
+    - telescope_install_result is changed or telescope_check.rc == 0
+  tags: [telescope, cron]

@@ -1,0 +1,22 @@
+---
+# roles/laravel_telescope/tasks/main.yml
+# Laravel Telescope installation and configuration
+
+- name: (main) Include Telescope installation tasks
+  ansible.builtin.include_tasks: install.yml
+  when: laravel_telescope_install | default(false) | bool
+  tags: [telescope, install]
+
+- name: (main) Include Telescope configuration tasks
+  ansible.builtin.include_tasks: configure.yml
+  when: 
+    - laravel_telescope_install | default(false) | bool
+    - laravel_telescope_configure | default(true) | bool
+  tags: [telescope, configure]
+
+- name: (main) Include Telescope production security tasks
+  ansible.builtin.include_tasks: secure.yml
+  when: 
+    - laravel_telescope_install | default(false) | bool
+    - laravel_app_env == 'production'
+  tags: [telescope, security]

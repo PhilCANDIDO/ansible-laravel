@@ -1,0 +1,136 @@
+---
+# roles/laravel_telescope/defaults/main.yml
+# Default variables for Laravel Telescope role
+
+# =============================================================================
+# TELESCOPE INSTALLATION
+# =============================================================================
+laravel_telescope_install: false
+laravel_telescope_version: "latest"
+laravel_telescope_dev_only: true  # Install as dev dependency only
+
+# =============================================================================
+# TELESCOPE CONFIGURATION
+# =============================================================================
+laravel_telescope_configure: true
+laravel_telescope_enabled: true
+laravel_telescope_path: "telescope"
+laravel_telescope_custom_config: false
+
+# =============================================================================
+# TELESCOPE ENVIRONMENT SETTINGS
+# =============================================================================
+laravel_telescope_production_enabled: false
+laravel_telescope_staging_enabled: true
+laravel_telescope_local_enabled: true
+
+# =============================================================================
+# TELESCOPE SECURITY
+# =============================================================================
+# Authorized users (by email)
+laravel_telescope_authorized_users: []
+  # Example:
+  # - "admin@example.com"
+  # - "developer@example.com"
+
+# IP address restrictions
+laravel_telescope_allowed_ips: []
+  # Example:
+  # - "192.168.1.0/24"
+  # - "10.0.0.100"
+
+# Middleware configuration
+laravel_telescope_middleware: "'web', 'auth'"
+laravel_telescope_remove_auth_middleware: false
+
+# =============================================================================
+# TELESCOPE WATCHERS CONFIGURATION
+# =============================================================================
+laravel_telescope_watchers:
+  BatchWatcher: true
+  CacheWatcher: true
+  CommandWatcher: true
+  DumpWatcher: true
+  EventWatcher: true
+  ExceptionWatcher: true
+  JobWatcher: true
+  LogWatcher: true
+  MailWatcher: true
+  ModelWatcher: true
+  NotificationWatcher: true
+  QueryWatcher: true
+  RedisWatcher: true
+  RequestWatcher: true
+  ScheduleWatcher: true
+  ViewWatcher: true
+
+# =============================================================================
+# TELESCOPE MAINTENANCE AND PRUNING
+# =============================================================================
+laravel_telescope_auto_prune: true
+laravel_telescope_prune_hour: "2"  # Hour to run pruning (24h format)
+laravel_telescope_retention_hours: "48"  # How long to keep data
+laravel_telescope_pruning_lottery: "100"  # Lottery chance for automatic pruning
+
+# =============================================================================
+# TELESCOPE STORAGE CONFIGURATION
+# =============================================================================
+laravel_telescope_storage_driver: "database"  # Options: database, redis
+laravel_telescope_queue: "default"
+laravel_telescope_batch_size: 50
+
+# =============================================================================
+# TELESCOPE IGNORED PATHS
+# =============================================================================
+laravel_telescope_ignored_paths:
+  - "nova-api*"
+  - "telescope*"
+  - "vendor/telescope*"
+
+# =============================================================================
+# TELESCOPE IGNORED COMMANDS
+# =============================================================================
+laravel_telescope_ignored_commands:
+  - "migrate*"
+  - "queue:*"
+  - "telescope:*"
+
+# =============================================================================
+# TELESCOPE WATCHERS DETAILED CONFIG
+# =============================================================================
+# Query Watcher Configuration
+laravel_telescope_query_slow_threshold: 100  # milliseconds
+laravel_telescope_query_ignore_packages: true
+
+# Request Watcher Configuration
+laravel_telescope_request_size_limit: 64  # KB
+
+# Mail Watcher Configuration
+laravel_telescope_mail_capture_content: true
+
+# Cache Watcher Configuration
+laravel_telescope_cache_hidden_parameters: []
+
+# =============================================================================
+# TELESCOPE UI CONFIGURATION
+# =============================================================================
+laravel_telescope_avatar_provider: null  # Custom avatar provider
+laravel_telescope_theme: "auto"  # Options: auto, light, dark
+
+# =============================================================================
+# TELESCOPE TAGS
+# =============================================================================
+laravel_telescope_tags: []
+  # Example:
+  # - "api"
+  # - "admin"
+  # - "critical"
+
+# =============================================================================
+# TELESCOPE ENVIRONMENT VARIABLES
+# =============================================================================
+laravel_telescope_env_vars:
+  TELESCOPE_ENABLED: "{{ laravel_telescope_enabled | string | lower }}"
+  TELESCOPE_PATH: "{{ laravel_telescope_path }}"
+  TELESCOPE_DRIVER: "{{ laravel_telescope_storage_driver }}"
+  TELESCOPE_QUEUE: "{{ laravel_telescope_queue }}"

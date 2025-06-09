@@ -1,0 +1,41 @@
+---
+# roles/laravel_deploy/handlers/main.yml
+# Handlers for Laravel deployment role
+
+- name: Clear Laravel configuration cache
+  ansible.builtin.command:
+    cmd: php artisan config:clear
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+
+- name: Restart PHP-FPM
+  ansible.builtin.service:
+    name: "{{ php_fpm_service | default('php' + php_version + '-fpm') }}"
+    state: restarted
+  when: php_version is defined
+
+- name: Reload Web Server
+  ansible.builtin.service:
+    name: "{{ webserver_type | default('nginx') == 'nginx' | ternary(nginx_service | default('nginx'), apache_service | default('apache2')) }}"
+    state: reloaded
+
+- name: Clear OPcache
+  ansible.builtin.command: |
+    php -r "if (function_exists('opcache_reset')) { opcache_reset(); echo 'OPcache cleared'; } else { echo 'OPcache not available'; }"
+  register: opcache_clear_result
+  changed_when: "'OPcache cleared' in opcache_clear_result.stdout"
+
+- name: Clear Laravel caches
+  ansible.builtin.command:
+    cmd: php artisan optimize:clear
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+
+- name: Restart Queue Workers
+  ansible.builtin.command:
+    cmd: php artisan queue:restart
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"

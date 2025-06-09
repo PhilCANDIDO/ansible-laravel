@@ -1,0 +1,100 @@
+---
+# roles/laravel_deploy/tasks/configure.yml
+# Laravel configuration management tasks
+
+- name: (configure) Check if .env.example exists
+  ansible.builtin.stat:
+    path: "{{ laravel_deploy_path }}/.env.example"
+  register: env_example_file
+  tags: [config, env]
+
+- name: (configure) Copy .env.example to .env if .env doesn't exist
+  ansible.builtin.copy:
+    src: "{{ laravel_deploy_path }}/.env.example"
+    dest: "{{ laravel_deploy_path }}/.env"
+    owner: "{{ laravel_deploy_user }}"
+    group: "{{ laravel_deploy_group }}"
+    mode: '0640'
+    remote_src: true
+    force: false
+  when: env_example_file.stat.exists
+  tags: [config, env]
+
+- name: (configure) Generate Laravel .env configuration file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ laravel_deploy_path }}/.env"
+    owner: "{{ laravel_deploy_user }}"
+    group: "{{ laravel_deploy_group }}"
+    mode: '0640'
+  notify: Clear Laravel configuration cache
+  tags: [config, env]
+
+- name: (configure) Generate Laravel application key if not set
+  ansible.builtin.command:
+    cmd: php artisan key:generate --force
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  register: key_generate
+  changed_when: "'Application key set successfully' in key_generate.stdout"
+  when: laravel_app_key is not defined or laravel_app_key == ""
+  tags: [config, key]
+
+- name: (configure) Check database connection
+  ansible.builtin.command:
+    cmd: php artisan db:show
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  register: db_connection_check
+  changed_when: false
+  failed_when: false
+  tags: [config, database]
+
+- name: (configure) Check migration status
+  ansible.builtin.command:
+    cmd: php artisan migrate:status
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  register: migration_status
+  changed_when: false
+  failed_when: false
+  when: db_connection_check.rc == 0
+  tags: [config, database]
+
+- name: (configure) Run database migrations
+  ansible.builtin.command:
+    cmd: php artisan migrate --force
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  register: migrations
+  changed_when: "'Nothing to migrate' not in migrations.stdout"
+  when: 
+    - db_connection_check.rc == 0
+    - laravel_deploy_migrate | default(true) | bool
+    - migration_status.rc == 0
+  tags: [config, database]
+
+- name: (configure) Run database seeder
+  ansible.builtin.command:
+    cmd: php artisan db:seed --force
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: 
+    - db_connection_check.rc == 0
+    - laravel_deploy_seed | default(false) | bool
+  tags: [config, database]
+
+- name: (configure) Create storage link
+  ansible.builtin.command:
+    cmd: php artisan storage:link
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  args:
+    creates: "{{ laravel_deploy_path }}/public/storage"
+  tags: [config, storage]

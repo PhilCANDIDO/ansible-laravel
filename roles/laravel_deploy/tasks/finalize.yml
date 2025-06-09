@@ -1,0 +1,107 @@
+---
+# roles/laravel_deploy/tasks/finalize.yml
+# Final permissions and cleanup tasks
+
+- name: (finalize) Set correct permissions for Laravel directories
+  ansible.builtin.file:
+    path: "{{ laravel_deploy_path }}"
+    owner: "{{ laravel_deploy_user }}"
+    group: "{{ laravel_deploy_group }}"
+    mode: '0755'
+    recurse: true
+  tags: [finalize, permissions]
+
+- name: (finalize) Ensure storage and bootstrap/cache directories are writable
+  ansible.builtin.file:
+    path: "{{ laravel_deploy_path }}/{{ item }}"
+    state: directory
+    owner: "{{ laravel_deploy_user }}"
+    group: "{{ laravel_deploy_group }}"
+    mode: '0775'
+    recurse: true
+  loop:
+    - "storage"
+    - "bootstrap/cache"
+  tags: [finalize, permissions, storage]
+
+- name: (finalize) Remove development files in production
+  ansible.builtin.file:
+    path: "{{ laravel_deploy_path }}/{{ item }}"
+    state: absent
+  loop:
+    - "public/phpinfo.php"
+    - "public/info.php"
+    - ".env.example"
+    - "README.md"
+    - "CHANGELOG.md"
+  when: 
+    - laravel_app_env == 'production' 
+    - laravel_remove_default_routes | default(true) | bool
+  tags: [finalize, security, cleanup]
+
+- name: (finalize) Secure sensitive files permissions
+  ansible.builtin.file:
+    path: "{{ laravel_deploy_path }}/{{ item }}"
+    mode: '0640'
+    owner: "{{ laravel_deploy_user }}"
+    group: "{{ laravel_deploy_group }}"
+  loop: "{{ laravel_protected_files | default(['.env', 'composer.json', 'composer.lock']) }}"
+  tags: [finalize, security, files]
+
+- name: (finalize) Run post-deployment commands
+  ansible.builtin.command:
+    cmd: "{{ item }}"
+  loop: "{{ laravel_post_deploy_commands | default([]) }}"
+  when: laravel_post_deploy_commands is defined and laravel_post_deploy_commands | length > 0
+  tags: [finalize, commands]
+
+- name: (finalize) Create deployment log entry
+  ansible.builtin.lineinfile:
+    path: "{{ laravel_deploy_path }}/storage/logs/deployment.log"
+    line: |
+      [{{ ansible_date_time.iso8601 }}] {{ laravel_app_name | default('Laravel Application') }} deployed successfully
+      - Repository: {{ laravel_repo_url }}
+      - Branch: {{ laravel_repo_branch }}
+      - Environment: {{ laravel_app_env }}
+      - Deployed by: {{ ansible_user_id }}
+    create: true
+    owner: "{{ laravel_deploy_user }}"
+    group: "{{ laravel_deploy_group }}"
+    mode: '0644'
+  when: laravel_log_deployments | default(true) | bool
+  tags: [finalize, logging]
+
+- name: (finalize) Display deployment completion summary
+  ansible.builtin.debug:
+    msg: |
+      Laravel application {{ laravel_app_name | default(app_name) }} deployed successfully!
+      
+      Application Details:
+      ├── Name: {{ laravel_app_name | default(app_name) }}
+      ├── URL: {{ laravel_app_url }}
+      ├── Path: {{ laravel_deploy_path }}
+      ├── Environment: {{ laravel_app_env }}
+      ├── Database: {{ laravel_app_db_connection }}
+      └── User: {{ laravel_deploy_user }}
+      
+      Actions Performed:
+      ├── Repository cloned/updated from {{ laravel_repo_branch }} ✅
+      ├── Dependencies installed ✅
+      ├── Application key {{ laravel_app_key is defined | ternary('configured', 'generated') }} ✅
+      ├── Database {{ db_connection_check is defined and db_connection_check.rc == 0 | ternary('connected', 'skipped (check connection)') }} {{ migrations is defined and migrations.changed | ternary('& migrated', '') }} ✅
+      ├── Storage linked ✅
+      ├── Assets {{ package_json_file is defined and package_json_file.stat.exists | ternary('compiled', 'skipped (no package.json)') }} ✅
+      {% if laravel_telescope_install | default(false) | bool %}
+      ├── Telescope {{ laravel_telescope_install | ternary('installed', 'skipped') }} ✅
+      {% endif %}
+      └── Application optimized ✅
+      
+      Your {{ laravel_app_name | default(app_name) }} application is now live!
+      
+      {% if db_connection_check is defined and db_connection_check.rc != 0 %}
+      ⚠️  Database connection failed. Please check your database configuration and credentials.
+      {% endif %}
+      {% if laravel_telescope_install | default(false) | bool and laravel_telescope_production_enabled | default(false) | bool %}
+      🔭 Telescope is available at: {{ laravel_app_url }}/{{ laravel_telescope_path | default('telescope') }}
+      {% endif %}
+  tags: [finalize, summary]

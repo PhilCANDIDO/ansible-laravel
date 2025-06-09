@@ -1,5 +1,5 @@
 ---
-# Deploy a Laravel application to servers
+# Deploy a Laravel application to servers using modular roles
 # Supports application-specific variable files
 
 - name: Deploy Laravel Application
@@ -52,6 +52,22 @@
           - app_repo_branch: Git branch to deploy
         success_msg: "✅ Required application variables validated"
 
+    - name: 🚀 Display deployment information
+      ansible.builtin.debug:
+        msg: |
+          🚀 Starting Laravel application deployment using modular roles
+          📱 Application: {{ app_name }}
+          📊 Repository: {{ app_repo_url }}
+          🌿 Branch: {{ app_repo_branch }}
+          📁 Deploy directory: {{ webserver_laravel_root }}
+          👤 Webserver user: {{ webserver_user }}
+          🌐 Environment: {{ laravel_app_env | default('production') }}
+          🌍 URL: {{ laravel_app_url }}
+          {% if laravel_telescope_install | default(false) | bool %}
+          🔭 Telescope: {{ laravel_telescope_install | ternary('Will be installed', 'Skipped') }}
+          {% endif %}
+
+  # Define variables for role compatibility
   vars:
     # Define webserver user based on distribution and webserver type
     webserver_user: >-
@@ -68,468 +84,64 @@
       {%- endif -%}
     
     webserver_group: "{{ webserver_user }}"
-    
-    # Use variables from application file
-    _laravel_deploy_repo: "{{ app_repo_url }}"
-    _laravel_deploy_branch: "{{ app_repo_branch }}"
-    _laravel_deploy_dir: "{{ webserver_laravel_root }}"
-    _laravel_app_env: "{{ laravel_app_env | default('production') }}"
-    _laravel_app_debug: "{{ laravel_app_debug | default('false') }}"
-    _laravel_app_url: "{{ laravel_app_url }}"
-    
-    # Database connection variables (from application variables)
-    _laravel_app_db_connection: "{{ laravel_app_db_connection }}"
-    _laravel_app_db_host: "{{ laravel_app_db_host }}"
-    _laravel_app_db_port: "{{ laravel_app_db_port }}"
-    _laravel_app_db_database: "{{ laravel_app_db_database }}"
-    _laravel_app_db_username: "{{ laravel_app_db_username }}"
-    _laravel_app_db_password: "{{ laravel_app_db_password }}"
-    
-    # Redis configuration
-    _laravel_app_redis_host: "{{ laravel_app_redis_host }}"
-    _laravel_app_redis_password: "{{ laravel_app_redis_password }}"
-    _laravel_app_redis_port: "{{ laravel_app_redis_port }}"
-    
-    # Laravel storage directories
-    laravel_storage_dirs: "{{ laravel_writable_dirs | default(['bootstrap/cache', 'storage/app', 'storage/app/public', 'storage/framework', 'storage/framework/cache', 'storage/framework/sessions', 'storage/framework/views', 'storage/logs']) }}"
 
-  tasks:
-    - name: 🚀 Display deployment information
+  # Deployment roles in order
+  roles:
+    # Main Laravel deployment role
+    - role: laravel_deploy
+      tags: [deploy, laravel]
+    
+    # Optional Telescope installation and configuration
+    - role: laravel_telescope
+      when: laravel_telescope_install | default(false) | bool
+      tags: [deploy, telescope]
+
+  # Post-deployment tasks
+  post_tasks:
+    - name: 🎊 Final deployment summary
       ansible.builtin.debug:
         msg: |
-          🚀 Starting Laravel application deployment
-          📱 Application: {{ app_name }}
-          📊 Repository: {{ _laravel_deploy_repo }}
-          🌿 Branch: {{ _laravel_deploy_branch }}
-          📁 Deploy directory: {{ _laravel_deploy_dir }}
-          👤 Webserver user: {{ webserver_user }}
-          🌐 Environment: {{ _laravel_app_env }}
-          🌍 URL: {{ _laravel_app_url }}
-
-    - name: 📦 Ensure Git is installed
-      ansible.builtin.package:
-        name: git
-        state: present
-      
-    # Git configuration and deployment
-    - name: 🔍 Check if deployment directory exists
-      ansible.builtin.stat:
-        path: "{{ _laravel_deploy_dir }}"
-      register: deploy_dir_stat
-
-    - name: 🧹 Clean existing directory if needed
-      block:
-        - name: 🗑️ Remove existing directory (backup first if needed)
-          ansible.builtin.file:
-            path: "{{ _laravel_deploy_dir }}"
-            state: absent
-          when: 
-            - deploy_dir_stat.stat.exists
-            - laravel_git_clean | default(true) | bool
-
-        - name: 📁 Create fresh deployment directory
-          ansible.builtin.file:
-            path: "{{ _laravel_deploy_dir }}"
-            state: directory
-            owner: "{{ webserver_user }}"
-            group: "{{ webserver_group }}"
-            mode: '0755'
-      when: deploy_dir_stat.stat.exists
-
-    - name: 📁 Ensure deployment directory exists with correct ownership
-      ansible.builtin.file:
-        path: "{{ _laravel_deploy_dir }}"
-        state: directory
-        owner: "{{ webserver_user }}"
-        group: "{{ webserver_group }}"
-        mode: '0755'
-
-    - name: ⚙️ Configure Git safe directory globally
-      ansible.builtin.command: |
-        git config --global --add safe.directory {{ _laravel_deploy_dir }}
-      changed_when: true
-
-    - name: ⚙️ Configure Git safe directory for webserver user
-      ansible.builtin.command: |
-        git config --global --add safe.directory {{ _laravel_deploy_dir }}
-      become: true
-      become_user: "{{ webserver_user }}"
-      changed_when: true
-
-    - name: 📥 Clone or update Laravel repository
-      ansible.builtin.git:
-        repo: "{{ _laravel_deploy_repo }}"
-        dest: "{{ _laravel_deploy_dir }}"
-        version: "{{ _laravel_deploy_branch }}"
-        force: "{{ laravel_git_force_checkout | default(true) | bool }}"
-        depth: "{{ laravel_git_depth | default(1) }}"
-        key_file: "{{ app_repo_deploy_key | default(omit) }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      register: git_clone_result
-      retries: 3
-      delay: 5
-      until: git_clone_result is succeeded
-
-    - name: 🔧 Fix ownership after Git clone
-      ansible.builtin.file:
-        path: "{{ _laravel_deploy_dir }}"
-        owner: "{{ webserver_user }}"
-        group: "{{ webserver_group }}"
-        recurse: true
-      
-    - name: 📂 Create Laravel storage directories
-      ansible.builtin.file:
-        path: "{{ _laravel_deploy_dir }}/{{ item }}"
-        state: directory
-        owner: "{{ webserver_user }}"
-        group: "{{ webserver_group }}"
-        mode: '0775'
-      loop: "{{ laravel_storage_dirs }}"
-    
-    - name: 🔍 Check if .env.example exists
-      ansible.builtin.stat:
-        path: "{{ _laravel_deploy_dir }}/.env.example"
-      register: env_example_file
-    
-    - name: 📄 Copy .env.example to .env if .env doesn't exist
-      ansible.builtin.copy:
-        src: "{{ _laravel_deploy_dir }}/.env.example"
-        dest: "{{ _laravel_deploy_dir }}/.env"
-        owner: "{{ webserver_user }}"
-        group: "{{ webserver_group }}"
-        mode: '0640'
-        remote_src: true
-        force: false
-      when: env_example_file.stat.exists
-    
-    - name: ⚙️ Configure Laravel .env file - Basic settings
-      ansible.builtin.lineinfile:
-        path: "{{ _laravel_deploy_dir }}/.env"
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-        owner: "{{ webserver_user }}"
-        group: "{{ webserver_group }}"
-        mode: '0640'
-        create: true
-      loop:
-        - { regexp: '^APP_NAME=', line: 'APP_NAME="{{ laravel_app_name }}"' }
-        - { regexp: '^APP_ENV=', line: 'APP_ENV={{ _laravel_app_env }}' }
-        - { regexp: '^APP_DEBUG=', line: 'APP_DEBUG={{ _laravel_app_debug }}' }
-        - { regexp: '^APP_URL=', line: 'APP_URL={{ _laravel_app_url }}' }
-        - { regexp: '^APP_TIMEZONE=', line: 'APP_TIMEZONE={{ laravel_app_timezone | default("UTC") }}' }
-      notify: Clear Laravel configuration cache
-
-    - name: ⚙️ Configure Laravel .env file - Database settings
-      ansible.builtin.lineinfile:
-        path: "{{ _laravel_deploy_dir }}/.env"
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-        mode: '0640'
-      loop:
-        - { regexp: '^DB_CONNECTION=', line: 'DB_CONNECTION={{ _laravel_app_db_connection }}' }
-        - { regexp: '^DB_HOST=', line: 'DB_HOST={{ _laravel_app_db_host }}' }
-        - { regexp: '^DB_PORT=', line: 'DB_PORT={{ _laravel_app_db_port }}' }
-        - { regexp: '^DB_DATABASE=', line: 'DB_DATABASE={{ _laravel_app_db_database }}' }
-        - { regexp: '^DB_USERNAME=', line: 'DB_USERNAME={{ _laravel_app_db_username }}' }
-        - { regexp: '^DB_PASSWORD=', line: 'DB_PASSWORD={{ _laravel_app_db_password }}' }
-      notify: Clear Laravel configuration cache
-
-    - name: ⚙️ Configure Laravel .env file - Redis settings
-      ansible.builtin.lineinfile:
-        path: "{{ _laravel_deploy_dir }}/.env"
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-        mode: '0640'
-      loop:
-        - { regexp: '^REDIS_HOST=', line: 'REDIS_HOST={{ _laravel_app_redis_host }}' }
-        - { regexp: '^REDIS_PASSWORD=', line: 'REDIS_PASSWORD={{ _laravel_app_redis_password }}' }
-        - { regexp: '^REDIS_PORT=', line: 'REDIS_PORT={{ _laravel_app_redis_port }}' }
-      notify: Clear Laravel configuration cache
-
-    - name: ⚙️ Configure Laravel .env file - Session, Cache, Queue
-      ansible.builtin.lineinfile:
-        path: "{{ _laravel_deploy_dir }}/.env"
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-        mode: '0640'
-      loop:
-        - { regexp: '^SESSION_DRIVER=', line: 'SESSION_DRIVER={{ laravel_session_driver | default("database") }}' }
-        - { regexp: '^SESSION_LIFETIME=', line: 'SESSION_LIFETIME={{ laravel_session_lifetime | default("120") }}' }
-        - { regexp: '^CACHE_STORE=', line: 'CACHE_STORE={{ laravel_cache_store | default("database") }}' }
-        - { regexp: '^CACHE_PREFIX=', line: 'CACHE_PREFIX={{ laravel_cache_prefix | default(app_name + "_cache_") }}' }
-        - { regexp: '^QUEUE_CONNECTION=', line: 'QUEUE_CONNECTION={{ laravel_queue_connection | default("database") }}' }
-      when: laravel_session_driver is defined or laravel_cache_store is defined or laravel_queue_connection is defined
-      notify: Clear Laravel configuration cache
-
-    - name: ⚙️ Configure Laravel .env file - Mail settings
-      ansible.builtin.lineinfile:
-        path: "{{ _laravel_deploy_dir }}/.env"
-        regexp: "{{ item.regexp }}"
-        line: "{{ item.line }}"
-        mode: '0640'
-      loop:
-        - { regexp: '^MAIL_MAILER=', line: 'MAIL_MAILER={{ laravel_mail_mailer | default("log") }}' }
-        - { regexp: '^MAIL_HOST=', line: 'MAIL_HOST={{ laravel_mail_host | default("127.0.0.1") }}' }
-        - { regexp: '^MAIL_PORT=', line: 'MAIL_PORT={{ laravel_mail_port | default("2525") }}' }
-        - { regexp: '^MAIL_USERNAME=', line: 'MAIL_USERNAME={{ laravel_mail_username | default("null") }}' }
-        - { regexp: '^MAIL_PASSWORD=', line: 'MAIL_PASSWORD={{ laravel_mail_password | default("null") }}' }
-        - { regexp: '^MAIL_ENCRYPTION=', line: 'MAIL_ENCRYPTION={{ laravel_mail_encryption | default("null") }}' }
-        - { regexp: '^MAIL_FROM_ADDRESS=', line: 'MAIL_FROM_ADDRESS={{ laravel_mail_from_address | default("hello@localhost") }}' }
-        - { regexp: '^MAIL_FROM_NAME=', line: 'MAIL_FROM_NAME="{{ laravel_mail_from_name | default(laravel_app_name) }}"' }
-      when: laravel_mail_mailer is defined
-      notify: Clear Laravel configuration cache
-
-    - name: ⚙️ Configure Laravel .env file - Custom variables
-      ansible.builtin.lineinfile:
-        path: "{{ _laravel_deploy_dir }}/.env"
-        regexp: "^{{ item.key }}="
-        line: "{{ item.key }}={{ item.value }}"
-        mode: '0640'
-      loop: "{{ laravel_custom_env_vars | default([]) }}"
-      when: laravel_custom_env_vars is defined and laravel_custom_env_vars | length > 0
-      notify: Clear Laravel configuration cache
-    
-    # Composer installation
-    - name: 🎼 Install Composer dependencies
-      ansible.builtin.command:
-        cmd: composer install {{ laravel_composer_optimize | default(true) | ternary('--optimize-autoloader', '') }} --no-dev --no-interaction
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      environment:
-        COMPOSER_ALLOW_SUPERUSER: "1"
-        COMPOSER_MEMORY_LIMIT: "-1"
-      register: composer_install_result
-      changed_when: "'Nothing to install, update or remove' not in composer_install_result.stdout"
-      retries: 3
-      delay: 10
-      until: composer_install_result is succeeded
-      
-    - name: 🔑 Generate Laravel application key if not set
-      ansible.builtin.command:
-        cmd: php artisan key:generate --force
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      register: key_generate
-      changed_when: "'Application key set successfully' in key_generate.stdout"
-      when: laravel_app_key is not defined or laravel_app_key == ""
-      
-    # Database operations
-    - name: 🔍 Check database connection
-      ansible.builtin.command:
-        cmd: php artisan db:show
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      register: db_connection_check
-      changed_when: false
-      failed_when: false
-      
-    - name: 📊 Check migration status
-      ansible.builtin.command:
-        cmd: php artisan migrate:status
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      register: migration_status
-      changed_when: false
-      failed_when: false
-      when: db_connection_check.rc == 0
-      
-    - name: 🗃️ Run database migrations
-      ansible.builtin.command:
-        cmd: php artisan migrate --force
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      register: migrations
-      changed_when: "'Nothing to migrate' not in migrations.stdout"
-      when: 
-        - db_connection_check.rc == 0
-        - laravel_deploy_migrate | default(true) | bool
-        - migration_status.rc == 0
-      
-    - name: 🌱 Run database seeder
-      ansible.builtin.command:
-        cmd: php artisan db:seed --force
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      when: 
-        - db_connection_check.rc == 0
-        - laravel_deploy_seed | default(false) | bool
-      
-    - name: 🔗 Create storage link
-      ansible.builtin.command:
-        cmd: php artisan storage:link
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      args:
-        creates: "{{ _laravel_deploy_dir }}/public/storage"
-    
-    # Asset building
-    - name: 🔍 Check if package.json exists
-      ansible.builtin.stat:
-        path: "{{ _laravel_deploy_dir }}/package.json"
-      register: package_json_file
-    
-    - name: 📦 Install NPM dependencies
-      ansible.builtin.command:
-        cmd: npm ci {{ laravel_npm_install_args | default('--production') }}
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      when: 
-        - package_json_file.stat.exists
-        - laravel_deploy_build_assets | default(true) | bool
-      register: npm_install_result
-      changed_when: "'added' in npm_install_result.stdout or 'updated' in npm_install_result.stdout"
-      retries: 3
-      delay: 10
-      until: npm_install_result is succeeded
-      
-    - name: 🔍 Check if Vite config exists
-      ansible.builtin.stat:
-        path: "{{ _laravel_deploy_dir }}/vite.config.js"
-      register: vite_config_file
-    
-    - name: ⚡ Build assets with Vite
-      ansible.builtin.command:
-        cmd: npm run {{ laravel_npm_build_command | default('build') }}
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      when: 
-        - package_json_file.stat.exists
-        - vite_config_file.stat.exists
-        - laravel_deploy_build_assets | default(true) | bool
-        - laravel_use_vite | default(true) | bool
-      register: vite_build_result
-      changed_when: true
-      
-    - name: 🔧 Build assets with Mix (fallback)
-      ansible.builtin.command:
-        cmd: npm run {{ laravel_npm_build_command_mix | default('production') }}
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      when: 
-        - package_json_file.stat.exists
-        - not vite_config_file.stat.exists
-        - laravel_deploy_build_assets | default(true) | bool
-        - not (laravel_use_vite | default(true) | bool)
-      register: mix_build_result
-      changed_when: true
-      failed_when: false
-
-    # Laravel optimization
-    - name: 🚀 Clear existing caches
-      ansible.builtin.command:
-        cmd: php artisan optimize:clear
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      when: laravel_deploy_clear_cache | default(true) | bool
-      
-    - name: ⚡ Optimize Laravel for production
-      ansible.builtin.command:
-        cmd: php artisan optimize
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      when: laravel_deploy_optimize | default(true) | bool
-      notify: Restart PHP-FPM
-
-    # Custom artisan commands
-    - name: ⚙️ Run custom Artisan commands
-      ansible.builtin.command:
-        cmd: "{{ item }}"
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-      loop: "{{ laravel_artisan_commands | default([]) }}"
-      when: laravel_artisan_commands is defined and laravel_artisan_commands | length > 0
-    
-    # Set final permissions
-    - name: 🔒 Set correct permissions for Laravel directories
-      ansible.builtin.file:
-        path: "{{ _laravel_deploy_dir }}"
-        owner: "{{ webserver_user }}"
-        group: "{{ webserver_group }}"
-        mode: '0755'
-        recurse: true
-      
-    - name: 📝 Ensure storage and bootstrap/cache directories are writable
-      ansible.builtin.file:
-        path: "{{ _laravel_deploy_dir }}/{{ item }}"
-        state: directory
-        owner: "{{ webserver_user }}"
-        group: "{{ webserver_group }}"
-        mode: '0775'
-        recurse: true
-      loop:
-        - "storage"
-        - "bootstrap/cache"
-
-    # Security cleanup for production
-    - name: 🔐 Remove development files in production
-      ansible.builtin.file:
-        path: "{{ _laravel_deploy_dir }}/{{ item }}"
-        state: absent
-      loop:
-        - "public/phpinfo.php"
-        - "public/info.php"
-        - ".env.example"
-      when: _laravel_app_env == 'production' and laravel_remove_default_routes | default(true) | bool
-
-    # Post-deployment commands
-    - name: 🏁 Run post-deployment commands
-      ansible.builtin.command:
-        cmd: "{{ item }}"
-      loop: "{{ laravel_post_deploy_commands | default([]) }}"
-      when: laravel_post_deploy_commands is defined and laravel_post_deploy_commands | length > 0
-
-    - name: 🎉 Display deployment completion summary
-      ansible.builtin.debug:
-        msg: |
-          🎉 Laravel application {{ app_name }} deployed successfully!
           
-          📱 Application Details:
-          ├── Name: {{ app_name }}
-          ├── URL: {{ _laravel_app_url }}
-          ├── Path: {{ _laravel_deploy_dir }}
-          ├── Environment: {{ _laravel_app_env }}
-          ├── Database: {{ _laravel_app_db_connection }}
-          └── User: {{ webserver_user }}
+          🎊 Laravel Deployment Complete!
           
-          🔄 Actions Performed:
-          ├── Repository cloned/updated from {{ _laravel_deploy_branch }} ✅
-          ├── Dependencies installed ✅
-          ├── Application key {{ laravel_app_key is defined | ternary('configured', 'generated') }} ✅
-          ├── Database {{ db_connection_check.rc == 0 | ternary('connected', 'skipped (check connection)') }} {{ migrations is defined and migrations.changed | ternary('& migrated', '') }} ✅
-          ├── Storage linked ✅
-          ├── Assets {{ package_json_file.stat.exists | ternary('compiled', 'skipped (no package.json)') }} ✅
-          └── Application optimized ✅
-          
-          🌐 Your {{ app_name }} application is now live!
-          
-          {% if db_connection_check.rc != 0 %}
-          ⚠️  Database connection failed. Please check your database configuration and credentials.
+          📋 Summary:
+          ├── Application: {{ app_name }} ✅
+          ├── Environment: {{ laravel_app_env | default('production') }} ✅
+          ├── URL: {{ laravel_app_url }} ✅
+          ├── Path: {{ webserver_laravel_root }} ✅
+          {% if laravel_telescope_install | default(false) | bool %}
+          ├── Telescope: Installed {% if laravel_telescope_production_enabled | default(false) %}(Production enabled){% else %}(Dev only){% endif %} ✅
           {% endif %}
+          └── Deployment: {{ ansible_date_time.iso8601 }} ✅
+          
+          🌐 Your {{ app_name }} application is ready!
+          
+          📚 Next Steps:
+          - Test your application: {{ laravel_app_url }}
+          {% if laravel_telescope_install | default(false) | bool and (laravel_telescope_production_enabled | default(false) | bool or laravel_app_env != 'production') %}
+          - Access Telescope: {{ laravel_app_url }}/{{ laravel_telescope_path | default('telescope') }}
+          {% endif %}
+          - Monitor logs: {{ webserver_laravel_root }}/storage/logs/
+          - Check queue workers if using queues
+          - Schedule regular backups
+      tags: [always]
 
+  # Handlers for deployment
   handlers:
-    - name: Clear Laravel configuration cache
-      ansible.builtin.command:
-        cmd: php artisan config:clear
-        chdir: "{{ _laravel_deploy_dir }}"
-      become: true
-      become_user: "{{ webserver_user }}"
-    
     - name: Restart PHP-FPM
       ansible.builtin.service:
         name: "php{{ php_version | default('8.2') }}-fpm"
         state: restarted
       when: php_version is defined
+
+    - name: Reload Web Server
+      ansible.builtin.service:
+        name: "{{ webserver_type | default('nginx') == 'nginx' | ternary(nginx_service | default('nginx'), apache_service | default('apache2')) }}"
+        state: reloaded
+
+    - name: Clear Laravel Caches
+      ansible.builtin.command:
+        cmd: php artisan optimize:clear
+        chdir: "{{ webserver_laravel_root }}"
+      become: true
+      become_user: "{{ webserver_user }}"
