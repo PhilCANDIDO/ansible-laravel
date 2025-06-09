@@ -29,7 +29,6 @@ mysql_read_buffer_size: "2M"
 mysql_read_rnd_buffer_size: "1M"
 mysql_myisam_sort_buffer_size: "64M"
 mysql_thread_cache_size: 8
-mysql_query_cache_size: "16M"
 mysql_innodb_buffer_pool_size: "128M"
 mysql_innodb_log_file_size: "64M"
 mysql_innodb_log_buffer_size: "8M"
