@@ -79,13 +79,13 @@
   when: mysql_root_passwordless_check.rc == 0
   tags: [mysql, install]
 
-# Display current authentication status for debugging
+# Display current authentication status for debugging - FIXED
 - name: (install) Display current MySQL authentication status
   ansible.builtin.debug:
     msg: |
       MySQL Authentication Status:
       ├── Passwordless access: {{ mysql_root_passwordless_check.rc == 0 | ternary('✅ Available', '❌ Not available') }}
-      {% if mysql_auth_check is defined and mysql_auth_check.rc == 0 %}
+      {% if mysql_auth_check is defined and mysql_auth_check.rc is defined and mysql_auth_check.rc == 0 %}
       ├── Authentication method: {{ 'auth_socket' if 'auth_socket' in mysql_auth_check.stdout else 'password' }}
       └── Root user info: {{ mysql_auth_check.stdout | default('N/A') }}
       {% else %}
@@ -117,6 +117,7 @@
       when: 
         - mysql_root_password is defined and mysql_root_password != ''
         - mysql_auth_check is defined
+        - mysql_auth_check.stdout is defined
         - "'auth_socket' in mysql_auth_check.stdout"
         - mysql_root_password_set is succeeded
       register: mysql_auth_fix
