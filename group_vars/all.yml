@@ -197,7 +197,6 @@ php_fpm_max_spare_servers: 35
 php_fpm_max_requests: 500
 
 # Database Performance (applied to all database engines)
-db_query_cache_size: "32M"
 db_innodb_buffer_pool_size: "{{ (ansible_memtotal_mb * 0.7) | int }}M"  # 70% of available RAM
 db_max_connections: "{{ (ansible_processor_vcpus * 25) | int }}"  # 25 connections per CPU core
 
