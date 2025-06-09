@@ -1,6 +1,7 @@
 ---
 # roles/laravel_deploy/tasks/configure.yml
-# Laravel configuration management tasks
+# Laravel configuration management tasks - POST BUILD
+# This runs AFTER composer install and vendor/ directory exists
 
 - name: (configure) Check if .env.example exists
   ansible.builtin.stat:

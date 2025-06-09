@@ -1,18 +1,23 @@
 ---
 # roles/laravel_deploy/tasks/main.yml
 # Main tasks file for Laravel deployment role
+# Correct deployment order based on Laravel 11 documentation
 
 - name: (main) Include Git deployment tasks
   ansible.builtin.include_tasks: git_deploy.yml
   tags: [deploy, git]
 
-- name: (main) Include configuration management tasks
-  ansible.builtin.include_tasks: configure.yml
-  tags: [deploy, configure]
+- name: (main) Include pre-build configuration tasks
+  ansible.builtin.include_tasks: pre_configure.yml
+  tags: [deploy, pre_configure]
 
-- name: (main) Include Composer and build tasks
+- name: (main) Include Composer and NPM/Asset build tasks
   ansible.builtin.include_tasks: build.yml
   tags: [deploy, build]
+
+- name: (main) Include configuration management tasks (post-build)
+  ansible.builtin.include_tasks: configure.yml
+  tags: [deploy, configure]
 
 - name: (main) Include Laravel optimization tasks
   ansible.builtin.include_tasks: optimize.yml

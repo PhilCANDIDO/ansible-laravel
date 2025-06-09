@@ -1,8 +1,9 @@
 ---
 # roles/laravel_deploy/tasks/optimize.yml
-# Laravel optimization tasks
+# Laravel optimization tasks based on Laravel 11 deployment documentation
+# Order: clear existing caches → cache new configurations
 
-- name: (optimize) Clear existing caches
+- name: (optimize) Clear existing caches first
   ansible.builtin.command:
     cmd: php artisan optimize:clear
     chdir: "{{ laravel_deploy_path }}"
@@ -11,53 +12,74 @@
   when: laravel_deploy_clear_cache | default(true) | bool
   tags: [optimize, clear]
 
-- name: (optimize) Optimize Laravel for production
-  ansible.builtin.command:
-    cmd: php artisan optimize
-    chdir: "{{ laravel_deploy_path }}"
-  become: true
-  become_user: "{{ laravel_deploy_user }}"
-  when: laravel_deploy_optimize | default(true) | bool
-  notify: Restart PHP-FPM
-  tags: [optimize, cache]
-
-- name: (optimize) Cache Laravel configuration
+- name: (optimize) Cache Laravel configuration (Laravel 11 recommended)
   ansible.builtin.command:
     cmd: php artisan config:cache
     chdir: "{{ laravel_deploy_path }}"
   become: true
   become_user: "{{ laravel_deploy_user }}"
-  when: laravel_config_cache | default(true) | bool
+  when: 
+    - laravel_config_cache | default(true) | bool
+    - laravel_app_env == 'production'
+  register: config_cache_result
+  changed_when: config_cache_result.rc == 0
   tags: [optimize, config]
 
-- name: (optimize) Cache Laravel routes
-  ansible.builtin.command:
-    cmd: php artisan route:cache
-    chdir: "{{ laravel_deploy_path }}"
-  become: true
-  become_user: "{{ laravel_deploy_user }}"
-  when: laravel_route_cache | default(true) | bool
-  tags: [optimize, routes]
-
-- name: (optimize) Cache Laravel views
-  ansible.builtin.command:
-    cmd: php artisan view:cache
-    chdir: "{{ laravel_deploy_path }}"
-  become: true
-  become_user: "{{ laravel_deploy_user }}"
-  when: laravel_view_cache | default(true) | bool
-  tags: [optimize, views]
-
-- name: (optimize) Cache Laravel events
+- name: (optimize) Cache Laravel events (Laravel 11 recommended)
   ansible.builtin.command:
     cmd: php artisan event:cache
     chdir: "{{ laravel_deploy_path }}"
   become: true
   become_user: "{{ laravel_deploy_user }}"
-  when: laravel_event_cache | default(true) | bool
+  when: 
+    - laravel_event_cache | default(true) | bool
+    - laravel_app_env == 'production'
+  register: event_cache_result
+  changed_when: event_cache_result.rc == 0
   tags: [optimize, events]
 
-- name: (optimize) Optimize Composer autoloader
+- name: (optimize) Cache Laravel routes (Laravel 11 recommended)
+  ansible.builtin.command:
+    cmd: php artisan route:cache
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: 
+    - laravel_route_cache | default(true) | bool
+    - laravel_app_env == 'production'
+  register: route_cache_result
+  changed_when: route_cache_result.rc == 0
+  tags: [optimize, routes]
+
+- name: (optimize) Cache Laravel views (Laravel 11 recommended)
+  ansible.builtin.command:
+    cmd: php artisan view:cache
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: 
+    - laravel_view_cache | default(true) | bool
+    - laravel_app_env == 'production'
+  register: view_cache_result
+  changed_when: view_cache_result.rc == 0
+  tags: [optimize, views]
+
+- name: (optimize) Use Laravel's optimize command (all-in-one for production)
+  ansible.builtin.command:
+    cmd: php artisan optimize
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: 
+    - laravel_deploy_optimize | default(true) | bool
+    - laravel_app_env == 'production'
+    - not (laravel_config_cache | default(true) | bool and laravel_route_cache | default(true) | bool and laravel_view_cache | default(true) | bool)
+  notify: Restart PHP-FPM
+  register: optimize_result
+  changed_when: optimize_result.rc == 0
+  tags: [optimize, all]
+
+- name: (optimize) Optimize Composer autoloader for production
   ansible.builtin.command:
     cmd: composer dump-autoload --optimize --no-dev
     chdir: "{{ laravel_deploy_path }}"
@@ -68,7 +90,28 @@
   when: 
     - laravel_composer_optimize | default(true) | bool
     - laravel_app_env == 'production'
+  register: composer_optimize_result
+  changed_when: composer_optimize_result.rc == 0
   tags: [optimize, composer]
+
+- name: (optimize) Development environment optimization
+  block:
+    - name: (optimize) Clear development caches only
+      ansible.builtin.command:
+        cmd: "{{ item }}"
+        chdir: "{{ laravel_deploy_path }}"
+      become: true
+      become_user: "{{ laravel_deploy_user }}"
+      loop:
+        - "php artisan config:clear"
+        - "php artisan route:clear"
+        - "php artisan view:clear"
+      when: laravel_deploy_clear_cache | default(true) | bool
+      register: dev_clear_result
+      changed_when: dev_clear_result.rc == 0
+      failed_when: false
+  when: laravel_app_env in ['local', 'development', 'staging']
+  tags: [optimize, development]
 
 - name: (optimize) Run Laravel health checks
   ansible.builtin.command:
@@ -82,12 +125,38 @@
   when: laravel_health_check_enabled | default(true) | bool
   tags: [optimize, health]
 
-- name: (optimize) Display Laravel application information
+- name: (optimize) Display optimization summary
   ansible.builtin.debug:
     msg: |
-      📊 Laravel Application Status:
-      {{ laravel_about.stdout_lines | join('\n') if laravel_about is defined and laravel_about.stdout_lines is defined else 'Health check skipped' }}
+      🚀 Laravel Optimization Complete:
+      
+      Environment: {{ laravel_app_env }}
+      
+      {% if laravel_app_env == 'production' %}
+      Production Optimizations:
+      ├── Config Cache: {{ config_cache_result is defined and config_cache_result.changed | ternary('✅ Created', '⚠️ Skipped') }}
+      ├── Route Cache: {{ route_cache_result is defined and route_cache_result.changed | ternary('✅ Created', '⚠️ Skipped') }}
+      ├── View Cache: {{ view_cache_result is defined and view_cache_result.changed | ternary('✅ Created', '⚠️ Skipped') }}
+      ├── Event Cache: {{ event_cache_result is defined and event_cache_result.changed | ternary('✅ Created', '⚠️ Skipped') }}
+      └── Composer Autoload: {{ composer_optimize_result is defined and composer_optimize_result.changed | ternary('✅ Optimized', '⚠️ Skipped') }}
+      {% else %}
+      Development Optimizations:
+      └── Caches: {{ dev_clear_result is defined | ternary('✅ Cleared for development', '⚠️ Skipped') }}
+      {% endif %}
+      
+      {% if laravel_about is defined and laravel_about.rc == 0 %}
+      📊 Application Status: Healthy ✅
+      {% endif %}
+      
+      💡 Next: Your Laravel application is optimized and ready!
+  tags: [optimize, summary]
+
+- name: (optimize) Display Laravel application information (detailed)
+  ansible.builtin.debug:
+    var: laravel_about.stdout_lines
   when: 
     - laravel_health_check_enabled | default(true) | bool
     - laravel_about is defined
-  tags: [optimize, health]
+    - laravel_about.rc == 0
+    - ansible_verbosity >= 1
+  tags: [optimize, health, verbose]
