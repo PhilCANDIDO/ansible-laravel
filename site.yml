@@ -72,8 +72,8 @@
     - name: Verify Laravel version compatibility
       ansible.builtin.assert:
         that:
-          - laravel_version | default('11') in laravel_versions
-        fail_msg: "Laravel version {{ laravel_version | default('11') }} is not supported. Available: {{ laravel_versions.keys() | list }}"
+          - laravel_version | default('11') in ['10', '11']
+        fail_msg: "Laravel version {{ laravel_version | default('11') }} is not supported. Available: ['10', '11']"
         success_msg: "✅ Laravel {{ laravel_version | default('11') }} is supported"
       tags: [always]
   
