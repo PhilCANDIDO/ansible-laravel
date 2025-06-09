@@ -1,14 +1,16 @@
 ---
 # roles/laravel_deploy/tasks/build.yml
 # Composer installation and asset building tasks
+# This runs BEFORE Laravel configuration (artisan commands need vendor/)
 
 - name: (build) Install Composer dependencies
   ansible.builtin.command:
     cmd: >
       composer install 
       {{ laravel_composer_optimize | default(true) | ternary('--optimize-autoloader', '') }} 
-      {{ laravel_deploy_env == 'production' | ternary('--no-dev', '') }}
+      {{ laravel_app_env == 'production' | ternary('--no-dev', '') }}
       --no-interaction
+      --prefer-dist
     chdir: "{{ laravel_deploy_path }}"
   become: true
   become_user: "{{ laravel_deploy_user }}"
@@ -20,6 +22,16 @@
   retries: 3
   delay: 10
   until: composer_install_result is succeeded
+  tags: [build, composer]
+
+- name: (build) Display Composer installation result
+  ansible.builtin.debug:
+    msg: |
+      📦 Composer Dependencies:
+      Status: {{ composer_install_result.changed | ternary('Dependencies updated', 'Dependencies up to date') }}
+      Environment: {{ laravel_app_env }}
+      Optimized: {{ laravel_composer_optimize | default(true) }}
+      Dev dependencies: {{ laravel_app_env != 'production' | ternary('Included', 'Excluded') }}
   tags: [build, composer]
 
 - name: (build) Check if package.json exists
@@ -50,6 +62,13 @@
   register: vite_config_file
   tags: [build, assets]
 
+- name: (build) Check if Mix config exists (fallback)
+  ansible.builtin.stat:
+    path: "{{ laravel_deploy_path }}/webpack.mix.js"
+  register: mix_config_file
+  when: not vite_config_file.stat.exists
+  tags: [build, assets]
+
 - name: (build) Build assets with Vite
   ansible.builtin.command:
     cmd: npm run {{ laravel_npm_build_command | default('build') }}
@@ -73,7 +92,7 @@
   become_user: "{{ laravel_deploy_user }}"
   when: 
     - package_json_file.stat.exists
-    - not vite_config_file.stat.exists
+    - mix_config_file.stat.exists
     - laravel_deploy_build_assets | default(true) | bool
     - not (laravel_use_vite | default(true) | bool)
   register: mix_build_result
@@ -81,7 +100,17 @@
   failed_when: false
   tags: [build, assets, mix]
 
-- name: (build) Run custom Artisan commands
+- name: (build) Display asset build result
+  ansible.builtin.debug:
+    msg: |
+      🎨 Asset Building:
+      Build system: {{ vite_config_file.stat.exists | ternary('Vite', (mix_config_file.stat.exists | ternary('Mix', 'None detected'))) }}
+      Status: {{ (vite_build_result is defined and vite_build_result.changed) or (mix_build_result is defined and mix_build_result.changed) | ternary('Assets compiled', 'No assets to build') }}
+      Environment: {{ laravel_app_env }}
+  when: package_json_file.stat.exists
+  tags: [build, assets]
+
+- name: (build) Run custom Artisan commands (post-build)
   ansible.builtin.command:
     cmd: "{{ item }}"
     chdir: "{{ laravel_deploy_path }}"
@@ -90,3 +119,25 @@
   loop: "{{ laravel_artisan_commands | default([]) }}"
   when: laravel_artisan_commands is defined and laravel_artisan_commands | length > 0
   tags: [build, artisan]
+
+- name: (build) Verify Laravel installation
+  ansible.builtin.command:
+    cmd: php artisan --version
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  register: laravel_version_check
+  changed_when: false
+  tags: [build, verify]
+
+- name: (build) Display Laravel installation verification
+  ansible.builtin.debug:
+    msg: |
+      ✅ Laravel Installation Verified:
+      {{ laravel_version_check.stdout }}
+      
+      📋 Build Summary:
+      ├── Composer: {{ composer_install_result.changed | ternary('Dependencies updated', 'Up to date') }}
+      ├── NPM: {{ package_json_file.stat.exists | ternary((npm_install_result.changed | default(false)) | ternary('Dependencies updated', 'Up to date'), 'No package.json') }}
+      └── Assets: {{ package_json_file.stat.exists | ternary('Compiled', 'None to build') }}
+  tags: [build, verify]
