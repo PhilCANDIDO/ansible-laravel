@@ -1,0 +1,390 @@
+---
+# Environment maintenance tasks for Laravel servers
+# This playbook handles maintenance of the Laravel environment (not applications)
+
+- name: Laravel Environment Maintenance
+  hosts: all
+  become: true
+  vars:
+    maintenance_task: "status"  # Default task is status check
+    
+  tasks:
+    - name: Display maintenance task information
+      ansible.builtin.debug:
+        msg: |
+          🔧 Starting Laravel environment maintenance
+          📊 Task: {{ maintenance_task }}
+          🎯 Target: {{ inventory_hostname }}
+          📋 Available tasks: status, update, restart, optimize, clean, backup, security
+          
+    # =======================================================================
+    # SYSTEM STATUS CHECKS
+    # =======================================================================
+    - name: Check system status
+      block:
+        - name: Check disk space
+          ansible.builtin.command: df -h
+          register: disk_usage
+          changed_when: false
+          
+        - name: Check memory usage
+          ansible.builtin.command: free -h
+          register: memory_usage
+          changed_when: false
+          
+        - name: Check system load
+          ansible.builtin.command: uptime
+          register: system_load
+          changed_when: false
+          
+        - name: Display system status
+          ansible.builtin.debug:
+            msg: |
+              💻 System Status:
+              📀 Disk Usage:
+              {{ disk_usage.stdout }}
+              🧠 Memory Usage:
+              {{ memory_usage.stdout }}
+              ⚡ System Load:
+              {{ system_load.stdout }}
+      when: maintenance_task in ['status', 'all']
+      tags: [status]
+
+    # =======================================================================
+    # SERVICE STATUS CHECKS
+    # =======================================================================
+    - name: Check Laravel environment services
+      block:
+        - name: Check web server status
+          ansible.builtin.service_facts:
+          
+        - name: Check PHP-FPM status
+          ansible.builtin.command: systemctl is-active php{{ php_version | default('8.2') }}-fpm
+          register: php_fpm_status
+          changed_when: false
+          failed_when: false
+          
+        - name: Check database status
+          ansible.builtin.command: >
+            systemctl is-active {{ 
+              db_engine | default('mysql') == 'mysql' | ternary('mysql', 
+              (db_engine | default('mysql') == 'mariadb' | ternary('mariadb', 'postgresql'))) 
+            }}
+          register: database_status
+          changed_when: false
+          failed_when: false
+          
+        - name: Check Redis status (if enabled)
+          ansible.builtin.command: systemctl is-active redis-server
+          register: redis_status
+          changed_when: false
+          failed_when: false
+          when: enable_redis | default(false) | bool
+          
+        - name: Display service status
+          ansible.builtin.debug:
+            msg: |
+              🔧 Service Status:
+              🌐 {{ webserver_type | default('nginx') | capitalize }}: {{ ansible_facts.services[webserver_type | default('nginx')].state | default('unknown') }}
+              🐘 PHP-FPM: {{ php_fpm_status.stdout | default('unknown') }}
+              🗃️ Database: {{ database_status.stdout | default('unknown') }}
+              {% if enable_redis | default(false) | bool %}
+              📦 Redis: {{ redis_status.stdout | default('unknown') }}
+              {% endif %}
+      when: maintenance_task in ['status', 'all']
+      tags: [status, services]
+
+    # =======================================================================
+    # SYSTEM UPDATES
+    # =======================================================================
+    - name: Update system packages
+      block:
+        - name: Update package cache
+          ansible.builtin.package:
+            update_cache: true
+            
+        - name: Upgrade system packages (Debian/Ubuntu)
+          ansible.builtin.apt:
+            upgrade: safe
+            autoremove: true
+            autoclean: true
+          when: ansible_os_family == 'Debian'
+          
+        - name: Upgrade system packages (RHEL/CentOS)
+          ansible.builtin.dnf:
+            name: "*"
+            state: latest
+            update_cache: true
+          when: ansible_os_family == 'RedHat'
+          
+        - name: Check if reboot required
+          ansible.builtin.stat:
+            path: /var/run/reboot-required
+          register: reboot_required
+          when: ansible_os_family == 'Debian'
+          
+        - name: Display reboot requirement
+          ansible.builtin.debug:
+            msg: "⚠️ System reboot required after updates"
+          when: 
+            - ansible_os_family == 'Debian'
+            - reboot_required.stat.exists
+      when: maintenance_task in ['update', 'all']
+      tags: [update]
+
+    # =======================================================================
+    # SERVICE RESTART
+    # =======================================================================
+    - name: Restart Laravel environment services
+      block:
+        - name: Restart PHP-FPM
+          ansible.builtin.service:
+            name: "php{{ php_version | default('8.2') }}-fpm"
+            state: restarted
+            
+        - name: Restart web server
+          ansible.builtin.service:
+            name: "{{ webserver_type | default('nginx') }}"
+            state: restarted
+            
+        - name: Restart database service
+          ansible.builtin.service:
+            name: "{{ db_engine | default('mysql') == 'mysql' | ternary('mysql', (db_engine | default('mysql') == 'mariadb' | ternary('mariadb', 'postgresql'))) }}"
+            state: restarted
+          when: restart_database | default(false) | bool
+            
+        - name: Restart Redis (if enabled)
+          ansible.builtin.service:
+            name: "{{ 'redis-server' if ansible_os_family == 'Debian' else 'redis' }}"
+            state: restarted
+          when: enable_redis | default(false) | bool
+          
+        - name: Wait for services to be ready
+          ansible.builtin.wait_for:
+            port: "{{ item }}"
+            host: "127.0.0.1"
+            delay: 5
+            timeout: 30
+          loop:
+            - 80
+            - "{{ mysql_port | default(3306) if db_engine | default('mysql') in ['mysql', 'mariadb'] else postgresql_port | default(5432) }}"
+      when: maintenance_task in ['restart', 'all']
+      tags: [restart]
+
+    # =======================================================================
+    # SYSTEM OPTIMIZATION
+    # =======================================================================
+    - name: Optimize Laravel environment
+      block:
+        - name: Clear PHP OPcache
+          ansible.builtin.command: |
+            php -r "if (function_exists('opcache_reset')) { opcache_reset(); echo 'OPcache cleared'; } else { echo 'OPcache not available'; }"
+          register: opcache_clear
+          changed_when: "'OPcache cleared' in opcache_clear.stdout"
+          
+        - name: Optimize Composer autoloader globally
+          ansible.builtin.command: composer global dumpautoload --optimize
+          environment:
+            COMPOSER_ALLOW_SUPERUSER: "1"
+          failed_when: false
+          
+        - name: Clean package cache (Debian/Ubuntu)
+          ansible.builtin.apt:
+            autoclean: true
+            autoremove: true
+          when: ansible_os_family == 'Debian'
+          
+        - name: Clean package cache (RHEL/CentOS)
+          ansible.builtin.command: dnf clean all
+          when: ansible_os_family == 'RedHat'
+          changed_when: true
+          
+        - name: Update locate database
+          ansible.builtin.command: updatedb
+          failed_when: false
+          changed_when: true
+      when: maintenance_task in ['optimize', 'all']
+      tags: [optimize]
+
+    # =======================================================================
+    # CLEANUP TASKS
+    # =======================================================================
+    - name: Clean up temporary files and logs
+      block:
+        - name: Clean temporary files
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "/tmp/*.log"
+            - "/var/tmp/*.tmp"
+          failed_when: false
+          
+        - name: Rotate logs
+          ansible.builtin.command: logrotate -f /etc/logrotate.conf
+          failed_when: false
+          changed_when: true
+          
+        - name: Clean old log files (older than 30 days)
+          ansible.builtin.find:
+            paths:
+              - "/var/log"
+              - "/var/log/nginx"
+              - "/var/log/apache2"
+            patterns: "*.log.*"
+            age: "30d"
+          register: old_logs
+          
+        - name: Remove old log files
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ old_logs.files }}"
+          when: old_logs.files | length > 0
+          
+        - name: Clean PHP session files (older than 24 hours)
+          ansible.builtin.find:
+            paths: "/var/lib/php/sessions"
+            age: "24h"
+            file_type: file
+          register: old_sessions
+          
+        - name: Remove old PHP session files
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ old_sessions.files }}"
+          when: old_sessions.files | length > 0
+      when: maintenance_task in ['clean', 'all']
+      tags: [clean]
+
+    # =======================================================================
+    # BACKUP TASKS
+    # =======================================================================
+    - name: Backup system configuration
+      block:
+        - name: Create backup directory
+          ansible.builtin.file:
+            path: "/root/backups/{{ ansible_date_time.date }}"
+            state: directory
+            mode: '0700'
+            
+        - name: Backup web server configuration
+          ansible.builtin.copy:
+            src: "{{ item }}"
+            dest: "/root/backups/{{ ansible_date_time.date }}/"
+            remote_src: true
+          loop:
+            - "/etc/nginx" 
+            - "/etc/apache2"
+          failed_when: false
+          
+        - name: Backup PHP configuration
+          ansible.builtin.copy:
+            src: "/etc/php/{{ php_version | default('8.2') }}"
+            dest: "/root/backups/{{ ansible_date_time.date }}/php"
+            remote_src: true
+          failed_when: false
+          
+        - name: Backup database configuration
+          ansible.builtin.copy:
+            src: "{{ item }}"
+            dest: "/root/backups/{{ ansible_date_time.date }}/"
+            remote_src: true
+          loop:
+            - "/etc/mysql"
+            - "/etc/postgresql"
+          failed_when: false
+          
+        - name: Create backup archive
+          ansible.builtin.archive:
+            path: "/root/backups/{{ ansible_date_time.date }}"
+            dest: "/root/backups/environment-backup-{{ ansible_date_time.date }}.tar.gz"
+            remove: true
+            
+        - name: Clean old backups (keep last 7 days)
+          ansible.builtin.find:
+            paths: "/root/backups"
+            patterns: "environment-backup-*.tar.gz"
+            age: "7d"
+          register: old_backups
+          
+        - name: Remove old backup files
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ old_backups.files }}"
+      when: maintenance_task in ['backup', 'all']
+      tags: [backup]
+
+    # =======================================================================
+    # SECURITY CHECK
+    # =======================================================================
+    - name: Security maintenance
+      block:
+        - name: Check for failed login attempts
+          ansible.builtin.shell: |
+            grep "Failed password" /var/log/auth.log | tail -10 || echo "No failed attempts found"
+          register: failed_logins
+          changed_when: false
+          failed_when: false
+          
+        - name: Check listening ports
+          ansible.builtin.command: netstat -tuln
+          register: listening_ports
+          changed_when: false
+          
+        - name: Check for running processes by web user
+          ansible.builtin.command: ps -u {{ webserver_user }}
+          register: web_processes
+          changed_when: false
+          failed_when: false
+          
+        - name: Display security summary
+          ansible.builtin.debug:
+            msg: |
+              🔐 Security Check Summary:
+              📊 Recent failed logins:
+              {{ failed_logins.stdout }}
+              
+              🌐 Listening ports:
+              {{ listening_ports.stdout }}
+              
+              👤 Web user processes: {{ web_processes.stdout_lines | length }} running
+      when: maintenance_task in ['security', 'all']
+      tags: [security]
+
+    # =======================================================================
+    # FINAL STATUS REPORT
+    # =======================================================================
+    - name: Generate maintenance report
+      ansible.builtin.debug:
+        msg: |
+          
+          📋 Laravel Environment Maintenance Complete!
+          
+          🔧 Task Executed: {{ maintenance_task }}
+          📅 Date: {{ ansible_date_time.iso8601 }}
+          🎯 Server: {{ inventory_hostname }}
+          
+          ✅ Maintenance tasks completed successfully!
+          
+          💡 Next Steps:
+          {% if maintenance_task == 'update' and reboot_required is defined and reboot_required.stat.exists %}
+          ⚠️  REBOOT REQUIRED - Schedule a reboot when appropriate
+          {% endif %}
+          
+          🔍 Check application logs after maintenance
+          🧪 Test application functionality
+          📊 Monitor system performance
+          
+          📚 Run specific maintenance tasks:
+          - Status check: -e "maintenance_task=status"
+          - System update: -e "maintenance_task=update"
+          - Service restart: -e "maintenance_task=restart"
+          - Optimization: -e "maintenance_task=optimize"
+          - Cleanup: -e "maintenance_task=clean"
+          - Backup: -e "maintenance_task=backup"
+          - Security check: -e "maintenance_task=security"
+          - All tasks: -e "maintenance_task=all"
+      tags: [always]

@@ -1,65 +1,28 @@
 ---
 # Main playbook for Laravel 11 environment setup
-# This playbook installs all prerequisites for Laravel 11 with support for application-specific variables
+# This playbook ONLY installs the prerequisites for Laravel 11
+# Application deployment should be done with deploy-laravel.yml
 
-- name: Deploy Laravel 11 Environment
+- name: Setup Laravel 11 Environment Prerequisites
   hosts: all
   become: true
   
-  # Pre-tasks to validate and load application-specific variables
+  # Pre-tasks to validate and load configuration
   pre_tasks:
-    - name: Validate required variables for application-specific deployment
-      ansible.builtin.fail:
-        msg: |
-          ❌ Application-specific deployment requires the 'app_name' variable to be defined.
-          
-          Usage examples:
-          ansible-playbook -i inventory/hosts.yml site.yml -e "app_name=neodatabase"
-          ansible-playbook -i inventory/hosts.yml site.yml --extra-vars "app_name=myproject"
-          
-          This will automatically load variables from: vars/{{ app_name | default('UNDEFINED') }}.yml
-      when: 
-        - app_name is not defined
-        - application_mode | default(false) | bool
-
-    - name: Check if application-specific variable file exists
-      ansible.builtin.stat:
-        path: "{{ playbook_dir }}/vars/{{ app_name }}.yml"
-      register: app_vars_file
-      delegate_to: localhost
-      run_once: true
-      when: app_name is defined
-
-    - name: Validate application variable file exists
-      ansible.builtin.fail:
-        msg: |
-          ❌ Application variable file not found: vars/{{ app_name }}.yml
-          
-          Please create the file vars/{{ app_name }}.yml with your application-specific variables.
-          You can use vars/example-app.yml as a template.
-      when: 
-        - app_name is defined
-        - not app_vars_file.stat.exists
-
-    - name: Load application-specific variables
-      ansible.builtin.include_vars: "{{ playbook_dir }}/vars/{{ app_name }}.yml"
-      when: 
-        - app_name is defined
-        - app_vars_file.stat.exists
-
-    - name: Load default version mappings
-      ansible.builtin.include_vars: "{{ playbook_dir }}/vars/versions.yml"
-
-    - name: Display deployment information
+    - name: Display environment setup information
       ansible.builtin.debug:
         msg: |
-          🚀 Starting Laravel {{ laravel_version | default('11') }} environment deployment
+          🚀 Setting up Laravel {{ laravel_version | default('11') }} environment prerequisites
           📊 Target: {{ inventory_hostname }}
-          📱 Application: {{ app_name | default('Generic Laravel') }}
           🗃️ Database: {{ db_engine | default('mysql') }}
           🌐 Webserver: {{ webserver_type | default('nginx') }}
           📦 Redis: {{ enable_redis | default(false) | ternary('enabled', 'disabled') }}
-          📂 App Root: {{ webserver_laravel_root | default('/var/www/laravel') }}
+          🔧 This playbook installs ONLY the environment prerequisites
+          📋 Use deploy-laravel.yml to deploy your Laravel application
+      tags: [always]
+
+    - name: Load default version mappings
+      ansible.builtin.include_vars: "{{ playbook_dir }}/vars/versions.yml"
       tags: [always]
 
     - name: Update package cache
@@ -113,21 +76,6 @@
         fail_msg: "Laravel version {{ laravel_version | default('11') }} is not supported. Available: {{ laravel_versions.keys() | list }}"
         success_msg: "✅ Laravel {{ laravel_version | default('11') }} is supported"
       tags: [always]
-
-    - name: Validate application-specific variables (if application mode)
-      ansible.builtin.assert:
-        that:
-          - webserver_server_name is defined
-          - webserver_laravel_root is defined
-          - app_repo_url is defined or skip_app_deployment | default(false) | bool
-        fail_msg: |
-          ❌ Required application variables missing in vars/{{ app_name }}.yml:
-          - webserver_server_name: Domain name for the application
-          - webserver_laravel_root: Path where the application will be installed
-          - app_repo_url: Git repository URL (unless skip_app_deployment: true)
-        success_msg: "✅ Application-specific variables validated"
-      when: app_name is defined
-      tags: [always]
   
   roles:
     # Core PHP stack
@@ -168,48 +116,40 @@
       when: true
   
   post_tasks:
-    - name: Ensure Laravel directories exist with correct permissions
+    - name: Create generic Laravel directory structure (optional)
       ansible.builtin.file:
-        path: "{{ webserver_laravel_root }}/{{ item }}"
+        path: "{{ item }}"
         state: directory
         owner: "{{ webserver_user }}"
         group: "{{ webserver_group }}"
-        mode: '0775'
+        mode: '0755'
       loop:
-        - "storage"
-        - "storage/app"
-        - "storage/app/public"
-        - "storage/framework"
-        - "storage/framework/cache"
-        - "storage/framework/sessions"
-        - "storage/framework/views"
-        - "storage/logs"
-        - "bootstrap/cache"
-      when: 
-        - webserver_laravel_root is defined 
-        - webserver_laravel_root != ''
-      tags: [permissions, laravel]
+        - "/var/www"
+        - "/var/www/html"
+      when: create_base_directories | default(true) | bool
+      tags: [directories]
 
-    - name: Create phpinfo test file (development only)
+    - name: Create test phpinfo file for verification (development only)
       ansible.builtin.copy:
         content: |
           <?php
-          echo "<h1>{{ app_name | default('Laravel') }} Environment Ready!</h1>";
-          echo "<h2>Application Details</h2>";
-          echo "<p><strong>Application:</strong> {{ app_name | default('Unknown') }}</p>";
-          echo "<p><strong>Environment:</strong> {{ laravel_app_env | default('production') }}</p>";
+          echo "<h1>Laravel {{ laravel_version | default('11') }} Environment Ready!</h1>";
+          echo "<h2>System Information</h2>";
+          echo "<p><strong>Server:</strong> {{ inventory_hostname }}</p>";
+          echo "<p><strong>OS:</strong> {{ ansible_distribution }} {{ ansible_distribution_version }}</p>";
           echo "<p><strong>Laravel Version:</strong> {{ laravel_version | default('11') }}</p>";
           echo "<p><strong>Database Engine:</strong> {{ db_engine | default('mysql') }}</p>";
+          echo "<p><strong>Webserver:</strong> {{ webserver_type | default('nginx') }}</p>";
+          echo "<p><strong>Redis:</strong> {{ enable_redis | default(false) | ternary('Enabled', 'Disabled') }}</p>";
           echo "<h2>PHP Information</h2>";
           phpinfo();
-        dest: "{{ webserver_laravel_root }}/public/phpinfo.php"
+        dest: "/var/www/html/phpinfo.php"
         owner: "{{ webserver_user }}"
         group: "{{ webserver_group }}"
         mode: '0644'
       when: 
-        - webserver_laravel_root is defined 
-        - webserver_laravel_root != ''
-        - laravel_app_env | default('production') != 'production'
+        - environment_type | default('production') != 'production'
+        - create_test_files | default(true) | bool
       tags: [development, testing]
 
     - name: Verify PHP-FPM socket exists
@@ -219,82 +159,104 @@
       when: webserver_type | default('nginx') == 'nginx'
       tags: [verification]
 
+    - name: Test database connectivity
+      block:
+        - name: Test MySQL connection
+          community.mysql.mysql_info:
+            login_user: root
+            login_password: "{{ mysql_root_password }}"
+            login_unix_socket: "{{ '/var/run/mysqld/mysqld.sock' if ansible_os_family == 'Debian' else '/var/lib/mysql/mysql.sock' }}"
+          register: mysql_connection_test
+          when: 
+            - db_engine | default('mysql') == 'mysql'
+            - mysql_root_password is defined
+            - mysql_root_password != ''
+          ignore_errors: true
+
+        - name: Test MariaDB connection
+          community.mysql.mysql_info:
+            login_user: root
+            login_password: "{{ mariadb_root_password }}"
+            login_unix_socket: "{{ '/var/run/mysqld/mysqld.sock' if ansible_os_family == 'Debian' else '/var/lib/mysql/mysql.sock' }}"
+          register: mariadb_connection_test
+          when: 
+            - db_engine | default('mysql') == 'mariadb'
+            - mariadb_root_password is defined
+            - mariadb_root_password != ''
+          ignore_errors: true
+
+        - name: Test PostgreSQL connection
+          become: true
+          become_user: postgres
+          ansible.builtin.command: psql -c "SELECT version();"
+          register: postgresql_connection_test
+          when: db_engine | default('mysql') == 'postgresql'
+          ignore_errors: true
+          changed_when: false
+      tags: [verification, database]
+
     - name: Display Laravel environment setup summary
       ansible.builtin.debug:
         msg: |
           
-          🎉 Laravel {{ laravel_version | default('11') }} environment setup completed successfully!
-          
-          📱 Application Information:
-          ├── Application Name: {{ app_name | default('Generic Laravel Setup') }}
-          ├── Environment: {{ laravel_app_env | default('production') }}
-          ├── Domain: {{ webserver_server_name | default('localhost') }}
-          └── Install Path: {{ webserver_laravel_root | default('/var/www/laravel') }}
+          🎉 Laravel {{ laravel_version | default('11') }} environment prerequisites installed successfully!
           
           📋 Installed Components:
           ├── PHP {{ php_version | default('8.2') }} ✅
           ├── Composer {{ composer_version | default('latest') }} ✅
           ├── Node.js {{ nodejs_version | default('20.x') }} ✅
           {% if db_engine | default('mysql') == 'mysql' %}
-          ├── MySQL {{ mysql_version | default('8.0') }} ✅
-          │   ├── Database: {{ mysql_db_name | default('laravel') }}
-          │   └── User: {{ mysql_db_user | default('laravel') }}
+          ├── MySQL {{ mysql_version | default('8.0') }} {{ mysql_connection_test is defined and mysql_connection_test is succeeded | ternary('✅', '⚠️') }}
           {% elif db_engine | default('mysql') == 'mariadb' %}
-          ├── MariaDB {{ mariadb_version | default('10.11') }} ✅
-          │   ├── Database: {{ mariadb_db_name | default('laravel') }}
-          │   └── User: {{ mariadb_db_user | default('laravel') }}
+          ├── MariaDB {{ mariadb_version | default('10.11') }} {{ mariadb_connection_test is defined and mariadb_connection_test is succeeded | ternary('✅', '⚠️') }}
           {% elif db_engine | default('mysql') == 'postgresql' %}
-          ├── PostgreSQL {{ postgresql_version | default('15') }} ✅
-          │   ├── Database: {{ postgresql_db_name | default('laravel') }}
-          │   └── User: {{ postgresql_db_user | default('laravel') }}
+          ├── PostgreSQL {{ postgresql_version | default('15') }} {{ postgresql_connection_test is defined and postgresql_connection_test.rc == 0 | ternary('✅', '⚠️') }}
           {% endif %}
           {% if enable_redis | default(false) | bool %}
           ├── Redis {{ redis_version | default('7.0') }} ✅
           {% endif %}
           └── {{ webserver_type | default('nginx') | capitalize }} web server ✅
           
-          🌐 Web Configuration:
-          ├── Server name: {{ webserver_server_name | default('localhost') }}
-          ├── Document root: {{ webserver_public_root | default(webserver_laravel_root + '/public') }}
-          {% if webserver_enable_ssl | default(false) %}
-          ├── SSL/TLS: Enabled ✅
-          {% else %}
-          ├── SSL/TLS: Disabled ⚠️
-          {% endif %}
+          🌐 Web Server Configuration:
+          ├── Type: {{ webserver_type | default('nginx') | capitalize }}
+          ├── User: {{ webserver_user }}
+          ├── Group: {{ webserver_group }}
           └── PHP-FPM: {{ php_fpm_socket_check.stat.exists | default(false) | ternary('Connected ✅', 'Check configuration ⚠️') }}
           
+          🔧 Environment Status:
+          ├── Ready for Laravel applications: ✅
+          ├── Database engine: {{ db_engine | default('mysql') }}
+          └── Redis support: {{ enable_redis | default(false) | ternary('Available', 'Not installed') }}
+          
           🚀 Next Steps:
-          {% if app_name is defined and not (skip_app_deployment | default(false) | bool) %}
-          1. Deploy your application: ansible-playbook -i inventory/hosts.yml deploy-laravel.yml -e "app_name={{ app_name }}"
-          2. Configure your .env file with database credentials
-          3. Run Laravel setup commands (migrations, cache, etc.)
-          {% else %}
-          1. Deploy your Laravel application to: {{ webserver_laravel_root | default('/var/www/laravel') }}
-          2. Configure your .env file with database credentials
-          3. Run Laravel setup commands (migrations, cache, etc.)
-          {% endif %}
-          {% if laravel_app_env | default('production') != 'production' %}
-          4. Test PHP configuration: http://{{ webserver_server_name | default('localhost') }}/phpinfo.php
+          1. Create application-specific variables: vars/your-app-name.yml
+          2. Deploy your Laravel application:
+             ansible-playbook -i inventory/hosts.yml deploy-laravel.yml -e "app_name=your-app-name"
+          3. Configure your application's .env file
+          4. Run Laravel setup commands (migrations, cache, etc.)
+          
+          {% if environment_type | default('production') != 'production' and create_test_files | default(true) | bool %}
+          🧪 Test Environment:
+          └── PHP Info: http://{{ ansible_default_ipv4.address | default('localhost') }}/phpinfo.php
           {% endif %}
           
-          📚 Application-specific variables loaded from: vars/{{ app_name | default('N/A') }}.yml
+          📚 Documentation:
+          ├── Application deployment: docs/Application-Specific-Vars.md
+          ├── Laravel deployment guide: docs/Laravel11-Ansible-Deployment-Guide.md
+          └── Usage guide: usage-guide.md
       tags: [always]
 
-    - name: Save deployment information to file
+    - name: Save environment setup information
       ansible.builtin.copy:
         content: |
-          # Laravel {{ laravel_version | default('11') }} Environment - Deployment Info
+          # Laravel {{ laravel_version | default('11') }} Environment Prerequisites
           # Generated on {{ ansible_date_time.iso8601 }}
           
-          ## Application Information
-          - Application Name: {{ app_name | default('Generic Laravel Setup') }}
-          - Environment: {{ laravel_app_env | default('production') }}
-          - Variables File: vars/{{ app_name | default('N/A') }}.yml
-          
-          ## System Information
-          - Server: {{ inventory_hostname }}
+          ## Server Information
+          - Hostname: {{ inventory_hostname }}
           - OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
           - Architecture: {{ ansible_architecture }}
+          - Kernel: {{ ansible_kernel }}
           
           ## Installed Components
           - PHP: {{ php_version | default('8.2') }}
@@ -307,40 +269,74 @@
           - Webserver: {{ webserver_type | default('nginx') }}
           
           ## Configuration
-          - Laravel root: {{ webserver_laravel_root | default('/var/www/laravel') }}
-          - Server name: {{ webserver_server_name | default('localhost') }}
+          - Webserver user: {{ webserver_user }}
+          - Webserver group: {{ webserver_group }}
           - PHP-FPM socket: {{ webserver_php_fpm_socket | default('unix:/var/run/php/php8.2-fpm.sock') }}
           
           ## Database Configuration
           {% if db_engine | default('mysql') == 'mysql' %}
-          - MySQL Database: {{ mysql_db_name | default('laravel') }}
-          - MySQL User: {{ mysql_db_user | default('laravel') }}
           - MySQL Port: {{ mysql_port | default(3306) }}
+          - MySQL Socket: {{ '/var/run/mysqld/mysqld.sock' if ansible_os_family == 'Debian' else '/var/lib/mysql/mysql.sock' }}
           {% elif db_engine | default('mysql') == 'mariadb' %}
-          - MariaDB Database: {{ mariadb_db_name | default('laravel') }}
-          - MariaDB User: {{ mariadb_db_user | default('laravel') }}
           - MariaDB Port: {{ mariadb_port | default(3306) }}
+          - MariaDB Socket: {{ '/var/run/mysqld/mysqld.sock' if ansible_os_family == 'Debian' else '/var/lib/mysql/mysql.sock' }}
           {% elif db_engine | default('mysql') == 'postgresql' %}
-          - PostgreSQL Database: {{ postgresql_db_name | default('laravel') }}
-          - PostgreSQL User: {{ postgresql_db_user | default('laravel') }}
           - PostgreSQL Port: {{ postgresql_port | default(5432) }}
+          - PostgreSQL Data Dir: {{ postgresql_data_dir }}
           {% endif %}
           
-          {% if app_name is defined %}
-          ## Application Repository
-          - Repository URL: {{ app_repo_url | default('Not specified') }}
-          - Branch: {{ app_repo_branch | default('main') }}
+          {% if enable_redis | default(false) | bool %}
+          ## Redis Configuration
+          - Redis Port: {{ redis_port | default(6379) }}
+          - Redis Config: {{ redis_conf_path }}
           {% endif %}
-        dest: "/root/laravel-deployment-info-{{ app_name | default('generic') }}.md"
+          
+          ## Next Steps
+          1. Deploy applications using: ansible-playbook deploy-laravel.yml -e "app_name=your-app"
+          2. Configure application-specific variables in vars/your-app.yml
+          3. Set up SSL certificates if needed
+          4. Configure monitoring and backups
+          
+          ## Service Status Check Commands
+          ```bash
+          # Check all services
+          sudo systemctl status {{ webserver_type | default('nginx') }} php{{ php_version | default('8.2') }}-fpm {{ db_engine | default('mysql') == 'mysql' | ternary('mysql', (db_engine | default('mysql') == 'mariadb' | ternary('mariadb', 'postgresql'))) }}{% if enable_redis | default(false) | bool %} redis{% endif %}
+          
+          # Test PHP
+          php -v
+          
+          # Test Composer
+          composer --version
+          
+          # Test Node.js
+          node --version
+          npm --version
+          
+          # Test database connection
+          {% if db_engine | default('mysql') in ['mysql', 'mariadb'] %}
+          mysql -u root -p -e "SELECT version();"
+          {% elif db_engine | default('mysql') == 'postgresql' %}
+          sudo -u postgres psql -c "SELECT version();"
+          {% endif %}
+          
+          {% if enable_redis | default(false) | bool %}
+          # Test Redis
+          redis-cli ping
+          {% endif %}
+          ```
+        dest: "/root/laravel-environment-setup-{{ ansible_date_time.epoch }}.md"
         mode: '0600'
       tags: [documentation]
 
   handlers:
-    - name: Restart all services
+    - name: Restart web server
       ansible.builtin.service:
-        name: "{{ item }}"
+        name: "{{ webserver_type | default('nginx') == 'nginx' | ternary(nginx_service | default('nginx'), apache_service | default('apache2')) }}"
         state: restarted
-      loop:
-        - "{{ php_fpm_service | default('php8.2-fpm') }}"
-        - "{{ webserver_type | default('nginx') == 'nginx' | ternary(nginx_service | default('nginx'), apache_service | default('apache2')) }}"
-      listen: "restart services"
+      listen: "restart web services"
+
+    - name: Restart PHP-FPM
+      ansible.builtin.service:
+        name: "{{ php_fpm_service | default('php8.2-fpm') }}"
+        state: restarted
+      listen: "restart web services"
