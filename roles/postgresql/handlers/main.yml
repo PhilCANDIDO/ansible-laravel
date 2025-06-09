@@ -1,8 +1,27 @@
 ---
 # roles/postgresql/handlers/main.yml
-# Handlers for PostgreSQL role
+# Handlers for PostgreSQL role - FIXED
 
 - name: Restart PostgreSQL
   ansible.builtin.service:
     name: "{{ postgresql_service }}"
     state: restarted
+  listen: "restart postgresql"
+
+- name: Reload PostgreSQL
+  ansible.builtin.service:
+    name: "{{ postgresql_service }}"
+    state: reloaded
+  listen: "reload postgresql"
+
+- name: Stop PostgreSQL
+  ansible.builtin.service:
+    name: "{{ postgresql_service }}"
+    state: stopped
+  listen: "stop postgresql"
+
+- name: Start PostgreSQL
+  ansible.builtin.service:
+    name: "{{ postgresql_service }}"
+    state: started
+  listen: "start postgresql"

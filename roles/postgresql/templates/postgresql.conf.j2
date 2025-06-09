@@ -1,47 +1,191 @@
 # PostgreSQL configuration file
 # Managed by Ansible - DO NOT EDIT MANUALLY
+# Optimized for Laravel 11 applications
 
+#------------------------------------------------------------------------------
 # CONNECTIONS AND AUTHENTICATION
+#------------------------------------------------------------------------------
+
 listen_addresses = '{{ postgresql_listen_addresses }}'
 port = {{ postgresql_port }}
 max_connections = {{ postgresql_max_connections }}
 
-# RESOURCE USAGE
+# SSL configuration (disabled for local development, enable for production)
+ssl = off
+#ssl_cert_file = 'server.crt'
+#ssl_key_file = 'server.key'
+
+#------------------------------------------------------------------------------
+# RESOURCE USAGE (except WAL)
+#------------------------------------------------------------------------------
+
+# Memory settings optimized for Laravel
 shared_buffers = {{ postgresql_shared_buffers }}
 work_mem = {{ postgresql_work_mem }}
 maintenance_work_mem = {{ postgresql_maintenance_work_mem }}
 
+# Effective cache size should be set to the amount of memory available for disk caching
+effective_cache_size = {{ postgresql_effective_cache_size }}
+
+#------------------------------------------------------------------------------
 # WRITE-AHEAD LOG
+#------------------------------------------------------------------------------
+
 wal_buffers = {{ postgresql_wal_buffers }}
 max_wal_size = {{ postgresql_max_wal_size }}
 min_wal_size = {{ postgresql_min_wal_size }}
 checkpoint_completion_target = {{ postgresql_checkpoint_completion_target }}
 
-# QUERY PLANNING
-effective_cache_size = {{ postgresql_effective_cache_size }}
-random_page_cost = {{ postgresql_random_page_cost }}
-effective_io_concurrency = {{ postgresql_effective_io_concurrency }}
+# Archive settings (disabled by default)
+#archive_mode = off
+#archive_command = ''
 
-# LOGGING
-log_destination = 'stderr'
-logging_collector = on
-log_directory = 'log'
-log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+#------------------------------------------------------------------------------
+# REPLICATION
+#------------------------------------------------------------------------------
+
+# These settings are for replication (disabled by default for single-server setup)
+#wal_level = replica
+#max_wal_senders = 3
+#wal_keep_size = 0
+
+#------------------------------------------------------------------------------
+# QUERY TUNING
+#------------------------------------------------------------------------------
+
+# Cost-based optimizer settings
+effective_io_concurrency = {{ postgresql_effective_io_concurrency }}
+random_page_cost = {{ postgresql_random_page_cost }}
+
+# Planner method configuration for Laravel workloads
+#enable_seqscan = on
+#enable_indexscan = on
+#enable_hashjoin = on
+#enable_nestloop = on
+
+#------------------------------------------------------------------------------
+# REPORTING AND LOGGING
+#------------------------------------------------------------------------------
+
+# Where to log
+log_destination = '{{ postgresql_log_destination }}'
+logging_collector = {{ postgresql_logging_collector }}
+
+# Log directory and file settings
+{% if postgresql_log_directory is defined %}
+log_directory = '{{ postgresql_log_directory }}'
+{% endif %}
+{% if postgresql_log_filename is defined %}
+log_filename = '{{ postgresql_log_filename }}'
+{% endif %}
+
+# Log rotation
 log_truncate_on_rotation = off
 log_rotation_age = 1d
 log_rotation_size = 10MB
-log_min_duration_statement = 1000
-log_connections = on
-log_disconnections = on
-log_duration = off
-log_statement = 'ddl'
-log_timezone = 'UTC'
 
-# LOCALE AND FORMATTING
-datestyle = 'iso, mdy'
-timezone = 'UTC'
-lc_messages = 'en_US.UTF-8'
-lc_monetary = 'en_US.UTF-8'
-lc_numeric = 'en_US.UTF-8'
-lc_time = 'en_US.UTF-8'
-default_text_search_config = 'pg_catalog.english'
+# What to log
+{% if postgresql_log_min_duration_statement is defined %}
+log_min_duration_statement = {{ postgresql_log_min_duration_statement }}
+{% endif %}
+{% if postgresql_log_connections is defined %}
+log_connections = {{ postgresql_log_connections }}
+{% endif %}
+{% if postgresql_log_disconnections is defined %}
+log_disconnections = {{ postgresql_log_disconnections }}
+{% endif %}
+log_duration = off
+{% if postgresql_log_statement is defined %}
+log_statement = '{{ postgresql_log_statement }}'
+{% endif %}
+
+# Laravel-specific logging (helpful for debugging)
+log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+log_checkpoints = on
+log_lock_waits = on
+log_temp_files = 10MB
+
+#------------------------------------------------------------------------------
+# RUNTIME STATISTICS
+#------------------------------------------------------------------------------
+
+# Query and index statistics collector
+track_activities = on
+track_counts = on
+track_io_timing = on
+track_functions = none
+
+# Statistics sampling
+default_statistics_target = 100
+
+#------------------------------------------------------------------------------
+# CLIENT CONNECTION DEFAULTS
+#------------------------------------------------------------------------------
+
+# Locale and formatting
+datestyle = '{{ postgresql_datestyle | default("iso, mdy") }}'
+timezone = '{{ postgresql_timezone | default("UTC") }}'
+
+# Text search
+default_text_search_config = '{{ postgresql_default_text_search_config | default("pg_catalog.english") }}'
+
+# Locale settings for Laravel (UTF-8 support)
+lc_messages = '{{ postgresql_lc_messages | default("en_US.UTF-8") }}'
+lc_monetary = '{{ postgresql_lc_monetary | default("en_US.UTF-8") }}'
+lc_numeric = '{{ postgresql_lc_numeric | default("en_US.UTF-8") }}'
+lc_time = '{{ postgresql_lc_time | default("en_US.UTF-8") }}'
+
+#------------------------------------------------------------------------------
+# LARAVEL-SPECIFIC OPTIMIZATIONS
+#------------------------------------------------------------------------------
+
+{% if postgresql_laravel_optimized | default(false) %}
+# Optimizations for Laravel applications
+shared_preload_libraries = 'pg_stat_statements'
+
+# Increase the maximum number of prepared statements (Laravel uses many)
+max_prepared_transactions = 100
+
+# Statement timeout for long-running Laravel operations
+statement_timeout = 30s
+
+# Lock timeout for Laravel migrations
+lock_timeout = 5s
+
+# Increase work memory for complex Laravel queries
+work_mem = {{ postgresql_work_mem }}
+
+# Enable auto-vacuum for Laravel applications (high INSERT/UPDATE/DELETE volume)
+autovacuum = on
+autovacuum_max_workers = 3
+autovacuum_naptime = 1min
+
+# Maintenance work memory for auto-vacuum
+autovacuum_work_mem = {{ postgresql_maintenance_work_mem }}
+{% endif %}
+
+#------------------------------------------------------------------------------
+# CUSTOM SETTINGS FOR DEVELOPMENT/PRODUCTION
+#------------------------------------------------------------------------------
+
+{% if ansible_hostname is search("dev") or ansible_hostname is search("development") %}
+# Development-specific settings
+log_statement = 'all'
+log_min_duration_statement = 0
+log_min_error_statement = debug5
+{% else %}
+# Production-specific settings
+log_statement = 'ddl'
+log_min_duration_statement = 250
+log_min_error_statement = error
+{% endif %}
+
+#------------------------------------------------------------------------------
+# SOCKET SETTINGS
+#------------------------------------------------------------------------------
+
+{% if postgresql_unix_socket_directories is defined %}
+unix_socket_directories = '{{ postgresql_unix_socket_directories }}'
+{% endif %}
+unix_socket_group = ''
+unix_socket_permissions = 0777
