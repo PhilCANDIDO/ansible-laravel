@@ -4,3 +4,5 @@
 !version.yml
 # and the .gitignore file itself
 !.gitignore
+# and the example file
+!example*
