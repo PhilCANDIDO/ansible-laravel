@@ -1,0 +1,75 @@
+---
+# roles/laravel_telescope/tasks/configure.yml
+# Laravel Telescope configuration tasks
+
+- name: (configure) Configure Telescope for development environment
+  block:
+    - name: (configure) Remove TelescopeServiceProvider from config/app.php
+      ansible.builtin.lineinfile:
+        path: "{{ laravel_deploy_path }}/config/app.php"
+        regexp: ".*TelescopeServiceProvider.*"
+        state: absent
+      when: laravel_telescope_dev_only | default(false) | bool
+
+    - name: (configure) Configure conditional Telescope loading in AppServiceProvider
+      ansible.builtin.blockinfile:
+        path: "{{ laravel_deploy_path }}/app/Providers/AppServiceProvider.php"
+        marker: "// {mark} ANSIBLE MANAGED TELESCOPE BLOCK"
+        insertafter: "public function register\\(\\).*"
+        block: |
+          {% if laravel_telescope_dev_only | default(false) | bool %}
+                  // Register Telescope only in local environment
+                  if ($this->app->environment('local')) {
+                      $this->app->register(\Laravel\Telescope\TelescopeServiceProvider::class);
+                      $this->app->register(\App\Providers\TelescopeServiceProvider::class);
+                  }
+          {% endif %}
+        validate: 'php -l %s'
+      when: laravel_telescope_dev_only | default(false) | bool
+
+    - name: (configure) Add Telescope to composer.json dont-discover
+      ansible.builtin.lineinfile:
+        path: "{{ laravel_deploy_path }}/composer.json"
+        regexp: '.*"dont-discover".*'
+        line: '        "dont-discover": ["laravel/telescope"]'
+        insertafter: '"extra".*'
+      when: laravel_telescope_dev_only | default(false) | bool
+  when: laravel_app_env in ['local', 'development']
+  tags: [telescope, dev-config]
+
+- name: (configure) Configure Telescope settings
+  ansible.builtin.template:
+    src: telescope.php.j2
+    dest: "{{ laravel_deploy_path }}/config/telescope.php"
+    owner: "{{ laravel_deploy_user }}"
+    group: "{{ laravel_deploy_group }}"
+    mode: '0644'
+  when: laravel_telescope_custom_config | default(false) | bool
+  tags: [telescope, config]
+
+- name: (configure) Configure Telescope watchers
+  ansible.builtin.lineinfile:
+    path: "{{ laravel_deploy_path }}/config/telescope.php"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backup: true
+  loop:
+    - regexp: "'enabled' => env\\('TELESCOPE_ENABLED',"
+      line: "        'enabled' => env('TELESCOPE_ENABLED', {{ laravel_telescope_enabled | default('true') | lower }}),"
+    - regexp: "'path' => env\\('TELESCOPE_PATH',"
+      line: "        'path' => env('TELESCOPE_PATH', '{{ laravel_telescope_path | default('telescope') }}'),"
+  when: laravel_telescope_custom_config | default(false) | bool
+  tags: [telescope, config]
+
+- name: (configure) Set Telescope environment variables
+  ansible.builtin.lineinfile:
+    path: "{{ laravel_deploy_path }}/.env"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    create: true
+  loop:
+    - regexp: "^TELESCOPE_ENABLED="
+      line: "TELESCOPE_ENABLED={{ laravel_telescope_enabled | default('true') | lower }}"
+    - regexp: "^TELESCOPE_PATH="
+      line: "TELESCOPE_PATH={{ laravel_telescope_path | default('telescope') }}"
+  tags: [telescope, env]

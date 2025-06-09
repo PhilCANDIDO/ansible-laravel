@@ -1,0 +1,92 @@
+---
+# roles/laravel_deploy/tasks/git_deploy.yml
+# Git configuration and deployment tasks
+
+- name: (git_deploy) Ensure Git is installed
+  ansible.builtin.package:
+    name: git
+    state: present
+  tags: [git, dependencies]
+
+- name: (git_deploy) Check if deployment directory exists
+  ansible.builtin.stat:
+    path: "{{ laravel_deploy_path }}"
+  register: deploy_dir_stat
+  tags: [git, directory]
+
+- name: (git_deploy) Clean existing directory if needed
+  block:
+    - name: (git_deploy) Remove existing directory (backup first if needed)
+      ansible.builtin.file:
+        path: "{{ laravel_deploy_path }}"
+        state: absent
+      when: 
+        - deploy_dir_stat.stat.exists
+        - laravel_git_clean | default(true) | bool
+
+    - name: (git_deploy) Create fresh deployment directory
+      ansible.builtin.file:
+        path: "{{ laravel_deploy_path }}"
+        state: directory
+        owner: "{{ laravel_deploy_user }}"
+        group: "{{ laravel_deploy_group }}"
+        mode: '0755'
+  when: deploy_dir_stat.stat.exists
+  tags: [git, directory]
+
+- name: (git_deploy) Ensure deployment directory exists with correct ownership
+  ansible.builtin.file:
+    path: "{{ laravel_deploy_path }}"
+    state: directory
+    owner: "{{ laravel_deploy_user }}"
+    group: "{{ laravel_deploy_group }}"
+    mode: '0755'
+  tags: [git, directory]
+
+- name: (git_deploy) Configure Git safe directory globally
+  ansible.builtin.command: |
+    git config --global --add safe.directory {{ laravel_deploy_path }}
+  changed_when: true
+  tags: [git, config]
+
+- name: (git_deploy) Configure Git safe directory for deploy user
+  ansible.builtin.command: |
+    git config --global --add safe.directory {{ laravel_deploy_path }}
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  changed_when: true
+  tags: [git, config]
+
+- name: (git_deploy) Clone or update Laravel repository
+  ansible.builtin.git:
+    repo: "{{ laravel_repo_url }}"
+    dest: "{{ laravel_deploy_path }}"
+    version: "{{ laravel_repo_branch }}"
+    force: "{{ laravel_git_force_checkout | default(true) | bool }}"
+    depth: "{{ laravel_git_depth | default(1) }}"
+    key_file: "{{ laravel_repo_deploy_key | default(omit) }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  register: git_clone_result
+  retries: 3
+  delay: 5
+  until: git_clone_result is succeeded
+  tags: [git, clone]
+
+- name: (git_deploy) Fix ownership after Git clone
+  ansible.builtin.file:
+    path: "{{ laravel_deploy_path }}"
+    owner: "{{ laravel_deploy_user }}"
+    group: "{{ laravel_deploy_group }}"
+    recurse: true
+  tags: [git, permissions]
+
+- name: (git_deploy) Create Laravel storage directories
+  ansible.builtin.file:
+    path: "{{ laravel_deploy_path }}/{{ item }}"
+    state: directory
+    owner: "{{ laravel_deploy_user }}"
+    group: "{{ laravel_deploy_group }}"
+    mode: '0775'
+  loop: "{{ laravel_storage_dirs }}"
+  tags: [git, directories]

@@ -1,0 +1,92 @@
+---
+# roles/laravel_deploy/tasks/build.yml
+# Composer installation and asset building tasks
+
+- name: (build) Install Composer dependencies
+  ansible.builtin.command:
+    cmd: >
+      composer install 
+      {{ laravel_composer_optimize | default(true) | ternary('--optimize-autoloader', '') }} 
+      {{ laravel_deploy_env == 'production' | ternary('--no-dev', '') }}
+      --no-interaction
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  environment:
+    COMPOSER_ALLOW_SUPERUSER: "1"
+    COMPOSER_MEMORY_LIMIT: "-1"
+  register: composer_install_result
+  changed_when: "'Nothing to install, update or remove' not in composer_install_result.stdout"
+  retries: 3
+  delay: 10
+  until: composer_install_result is succeeded
+  tags: [build, composer]
+
+- name: (build) Check if package.json exists
+  ansible.builtin.stat:
+    path: "{{ laravel_deploy_path }}/package.json"
+  register: package_json_file
+  tags: [build, npm]
+
+- name: (build) Install NPM dependencies
+  ansible.builtin.command:
+    cmd: npm ci {{ laravel_npm_install_args | default('--production') }}
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: 
+    - package_json_file.stat.exists
+    - laravel_deploy_build_assets | default(true) | bool
+  register: npm_install_result
+  changed_when: "'added' in npm_install_result.stdout or 'updated' in npm_install_result.stdout"
+  retries: 3
+  delay: 10
+  until: npm_install_result is succeeded
+  tags: [build, npm]
+
+- name: (build) Check if Vite config exists
+  ansible.builtin.stat:
+    path: "{{ laravel_deploy_path }}/vite.config.js"
+  register: vite_config_file
+  tags: [build, assets]
+
+- name: (build) Build assets with Vite
+  ansible.builtin.command:
+    cmd: npm run {{ laravel_npm_build_command | default('build') }}
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: 
+    - package_json_file.stat.exists
+    - vite_config_file.stat.exists
+    - laravel_deploy_build_assets | default(true) | bool
+    - laravel_use_vite | default(true) | bool
+  register: vite_build_result
+  changed_when: true
+  tags: [build, assets, vite]
+
+- name: (build) Build assets with Mix (fallback)
+  ansible.builtin.command:
+    cmd: npm run {{ laravel_npm_build_command_mix | default('production') }}
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: 
+    - package_json_file.stat.exists
+    - not vite_config_file.stat.exists
+    - laravel_deploy_build_assets | default(true) | bool
+    - not (laravel_use_vite | default(true) | bool)
+  register: mix_build_result
+  changed_when: true
+  failed_when: false
+  tags: [build, assets, mix]
+
+- name: (build) Run custom Artisan commands
+  ansible.builtin.command:
+    cmd: "{{ item }}"
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  loop: "{{ laravel_artisan_commands | default([]) }}"
+  when: laravel_artisan_commands is defined and laravel_artisan_commands | length > 0
+  tags: [build, artisan]

@@ -1,0 +1,100 @@
+---
+# roles/laravel_telescope/tasks/secure.yml
+# Laravel Telescope production security configuration
+
+- name: (secure) Configure Telescope authorization gate for production
+  ansible.builtin.blockinfile:
+    path: "{{ laravel_deploy_path }}/app/Providers/TelescopeServiceProvider.php"
+    marker: "// {mark} ANSIBLE MANAGED TELESCOPE GATE BLOCK"
+    insertafter: "protected function gate\\(\\).*"
+    block: |
+                Gate::define('viewTelescope', function ($user = null) {
+          {% if laravel_telescope_authorized_users is defined and laravel_telescope_authorized_users | length > 0 %}
+                    if (!$user) {
+                        return false;
+                    }
+                    return in_array($user->email, [
+            {% for email in laravel_telescope_authorized_users %}
+                        '{{ email }}',
+            {% endfor %}
+                    ]);
+          {% else %}
+                    // Default: deny all access in production
+                    return false;
+          {% endif %}
+                });
+    validate: 'php -l %s'
+  tags: [telescope, security, gate]
+
+- name: (secure) Remove Authorize middleware if specified
+  ansible.builtin.lineinfile:
+    path: "{{ laravel_deploy_path }}/config/telescope.php"
+    regexp: ".*Authorize::class.*"
+    state: absent
+  when: laravel_telescope_remove_auth_middleware | default(false) | bool
+  tags: [telescope, security, middleware]
+
+- name: (secure) Configure Telescope to use custom route middleware
+  ansible.builtin.lineinfile:
+    path: "{{ laravel_deploy_path }}/config/telescope.php"
+    regexp: "'middleware' => \\[.*\\],"
+    line: "        'middleware' => [{{ laravel_telescope_middleware | default(\"'web', 'auth'\") }}],"
+    backup: true
+  when: laravel_telescope_middleware is defined
+  tags: [telescope, security, middleware]
+
+- name: (secure) Disable Telescope in production if required
+  ansible.builtin.lineinfile:
+    path: "{{ laravel_deploy_path }}/.env"
+    regexp: "^TELESCOPE_ENABLED="
+    line: "TELESCOPE_ENABLED={{ laravel_telescope_production_enabled | default('false') | lower }}"
+  when: not (laravel_telescope_production_enabled | default(false) | bool)
+  tags: [telescope, security, disable]
+
+- name: (secure) Set up IP restrictions for Telescope (if specified)
+  ansible.builtin.blockinfile:
+    path: "{{ laravel_deploy_path }}/app/Providers/TelescopeServiceProvider.php"
+    marker: "// {mark} ANSIBLE MANAGED IP RESTRICTION BLOCK"
+    insertbefore: "Gate::define\\('viewTelescope'"
+    block: |
+          {% if laravel_telescope_allowed_ips is defined and laravel_telescope_allowed_ips | length > 0 %}
+                // IP-based access control
+                $clientIp = request()->ip();
+                $allowedIps = [
+            {% for ip in laravel_telescope_allowed_ips %}
+                    '{{ ip }}',
+            {% endfor %}
+                ];
+                
+                if (!in_array($clientIp, $allowedIps)) {
+                    abort(403, 'Access denied from this IP address');
+                }
+          {% endif %}
+    validate: 'php -l %s'
+  when: laravel_telescope_allowed_ips is defined and laravel_telescope_allowed_ips | length > 0
+  tags: [telescope, security, ip]
+
+- name: (secure) Configure Telescope pruning for production
+  ansible.builtin.lineinfile:
+    path: "{{ laravel_deploy_path }}/config/telescope.php"
+    regexp: "'pruning' => \\[.*\\],"
+    line: "        'pruning' => ['enabled' => true, 'lottery' => [1, {{ laravel_telescope_pruning_lottery | default('100') }}]],"
+    backup: true
+  tags: [telescope, security, pruning]
+
+- name: (secure) Display Telescope security warning
+  ansible.builtin.debug:
+    msg: |
+      🔐 SECURITY WARNING: Laravel Telescope is enabled in production!
+      
+      Make sure you have:
+      ✅ Configured proper authorization gates
+      ✅ Set up IP restrictions if needed
+      ✅ Enabled automatic pruning
+      ✅ Restricted access to authorized users only
+      
+      Telescope URL: {{ laravel_app_url }}/{{ laravel_telescope_path | default('telescope') }}
+      
+      Consider disabling Telescope in production for security reasons.
+  when: laravel_telescope_production_enabled | default(false) | bool
+  tags: [telescope, security, warning]

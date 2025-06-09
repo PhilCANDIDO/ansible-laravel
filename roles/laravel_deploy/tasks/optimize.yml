@@ -1,0 +1,93 @@
+---
+# roles/laravel_deploy/tasks/optimize.yml
+# Laravel optimization tasks
+
+- name: (optimize) Clear existing caches
+  ansible.builtin.command:
+    cmd: php artisan optimize:clear
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: laravel_deploy_clear_cache | default(true) | bool
+  tags: [optimize, clear]
+
+- name: (optimize) Optimize Laravel for production
+  ansible.builtin.command:
+    cmd: php artisan optimize
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: laravel_deploy_optimize | default(true) | bool
+  notify: Restart PHP-FPM
+  tags: [optimize, cache]
+
+- name: (optimize) Cache Laravel configuration
+  ansible.builtin.command:
+    cmd: php artisan config:cache
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: laravel_config_cache | default(true) | bool
+  tags: [optimize, config]
+
+- name: (optimize) Cache Laravel routes
+  ansible.builtin.command:
+    cmd: php artisan route:cache
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: laravel_route_cache | default(true) | bool
+  tags: [optimize, routes]
+
+- name: (optimize) Cache Laravel views
+  ansible.builtin.command:
+    cmd: php artisan view:cache
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: laravel_view_cache | default(true) | bool
+  tags: [optimize, views]
+
+- name: (optimize) Cache Laravel events
+  ansible.builtin.command:
+    cmd: php artisan event:cache
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  when: laravel_event_cache | default(true) | bool
+  tags: [optimize, events]
+
+- name: (optimize) Optimize Composer autoloader
+  ansible.builtin.command:
+    cmd: composer dump-autoload --optimize --no-dev
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  environment:
+    COMPOSER_ALLOW_SUPERUSER: "1"
+  when: 
+    - laravel_composer_optimize | default(true) | bool
+    - laravel_app_env == 'production'
+  tags: [optimize, composer]
+
+- name: (optimize) Run Laravel health checks
+  ansible.builtin.command:
+    cmd: php artisan about
+    chdir: "{{ laravel_deploy_path }}"
+  become: true
+  become_user: "{{ laravel_deploy_user }}"
+  register: laravel_about
+  changed_when: false
+  failed_when: false
+  when: laravel_health_check_enabled | default(true) | bool
+  tags: [optimize, health]
+
+- name: (optimize) Display Laravel application information
+  ansible.builtin.debug:
+    msg: |
+      📊 Laravel Application Status:
+      {{ laravel_about.stdout_lines | join('\n') if laravel_about is defined and laravel_about.stdout_lines is defined else 'Health check skipped' }}
+  when: 
+    - laravel_health_check_enabled | default(true) | bool
+    - laravel_about is defined
+  tags: [optimize, health]

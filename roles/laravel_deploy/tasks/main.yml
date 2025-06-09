@@ -1,0 +1,23 @@
+---
+# roles/laravel_deploy/tasks/main.yml
+# Main tasks file for Laravel deployment role
+
+- name: (main) Include Git deployment tasks
+  ansible.builtin.include_tasks: git_deploy.yml
+  tags: [deploy, git]
+
+- name: (main) Include configuration management tasks
+  ansible.builtin.include_tasks: configure.yml
+  tags: [deploy, configure]
+
+- name: (main) Include Composer and build tasks
+  ansible.builtin.include_tasks: build.yml
+  tags: [deploy, build]
+
+- name: (main) Include Laravel optimization tasks
+  ansible.builtin.include_tasks: optimize.yml
+  tags: [deploy, optimize]
+
+- name: (main) Include permissions and final setup tasks
+  ansible.builtin.include_tasks: finalize.yml
+  tags: [deploy, finalize]

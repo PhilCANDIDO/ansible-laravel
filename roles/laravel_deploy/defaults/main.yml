@@ -1,0 +1,148 @@
+---
+# roles/laravel_deploy/defaults/main.yml
+# Default variables for Laravel deployment role
+
+# =============================================================================
+# DEPLOYMENT CONFIGURATION
+# =============================================================================
+laravel_deploy_path: "{{ webserver_laravel_root }}"
+laravel_deploy_user: "{{ webserver_user }}"
+laravel_deploy_group: "{{ webserver_group }}"
+
+# Repository Configuration
+laravel_repo_url: "{{ app_repo_url }}"
+laravel_repo_branch: "{{ app_repo_branch | default('main') }}"
+laravel_repo_deploy_key: ""  # SSH deploy key path if needed
+
+# Git Configuration
+laravel_git_clean: true
+laravel_git_force_checkout: true
+laravel_git_depth: 1
+
+# =============================================================================
+# APPLICATION CONFIGURATION
+# =============================================================================
+laravel_app_name: "{{ app_display_name | default(app_name) }}"
+laravel_app_env: "{{ laravel_app_env | default('production') }}"
+laravel_app_debug: "{{ laravel_app_debug | default('false') }}"
+laravel_app_key: "{{ laravel_app_key | default('') }}"
+laravel_app_url: "{{ laravel_app_url }}"
+
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+laravel_app_db_connection: "{{ laravel_app_db_connection }}"
+laravel_app_db_host: "{{ laravel_app_db_host | default('127.0.0.1') }}"
+laravel_app_db_port: "{{ laravel_app_db_port }}"
+laravel_app_db_database: "{{ laravel_app_db_database }}"
+laravel_app_db_username: "{{ laravel_app_db_username }}"
+laravel_app_db_password: "{{ laravel_app_db_password }}"
+
+# =============================================================================
+# DEPLOYMENT BEHAVIOR
+# =============================================================================
+laravel_deploy_migrate: true
+laravel_deploy_seed: false
+laravel_deploy_build_assets: true
+laravel_deploy_clear_cache: true
+laravel_deploy_optimize: true
+
+# =============================================================================
+# COMPOSER CONFIGURATION
+# =============================================================================
+laravel_composer_optimize: true
+laravel_composer_no_dev: "{{ laravel_app_env == 'production' }}"
+
+# =============================================================================
+# NPM/ASSET BUILDING CONFIGURATION
+# =============================================================================
+laravel_use_vite: true
+laravel_npm_install_args: "{{ laravel_app_env == 'production' | ternary('--production', '') }}"
+laravel_npm_build_command: "build"  # For Vite
+laravel_npm_build_command_mix: "production"  # For Laravel Mix
+
+# =============================================================================
+# LARAVEL OPTIMIZATION
+# =============================================================================
+laravel_config_cache: true
+laravel_route_cache: true
+laravel_view_cache: true
+laravel_event_cache: true
+
+# =============================================================================
+# STORAGE AND PERMISSIONS
+# =============================================================================
+laravel_storage_dirs:
+  - "storage"
+  - "storage/app"
+  - "storage/app/public"
+  - "storage/framework"
+  - "storage/framework/cache"
+  - "storage/framework/sessions"
+  - "storage/framework/views"
+  - "storage/logs"
+  - "bootstrap/cache"
+
+laravel_protected_files:
+  - ".env"
+  - "composer.json"
+  - "composer.lock"
+  - "package.json"
+  - "package-lock.json"
+
+# =============================================================================
+# SECURITY CONFIGURATION
+# =============================================================================
+laravel_remove_default_routes: true
+laravel_secure_headers: true
+laravel_disable_server_signature: true
+
+# =============================================================================
+# MONITORING AND HEALTH CHECKS
+# =============================================================================
+laravel_health_check_enabled: true
+laravel_log_deployments: true
+
+# =============================================================================
+# CUSTOM COMMANDS
+# =============================================================================
+laravel_artisan_commands: []
+  # Example:
+  # - "php artisan horizon:terminate"
+  # - "php artisan schedule:clear-cache"
+
+laravel_post_deploy_commands: []
+  # Example:
+  # - "sudo systemctl restart supervisor"
+  # - "sudo systemctl reload nginx"
+
+# =============================================================================
+# TELESCOPE CONFIGURATION
+# =============================================================================
+laravel_telescope_install: false
+laravel_telescope_configure: true
+laravel_telescope_dev_only: true
+laravel_telescope_enabled: true
+laravel_telescope_path: "telescope"
+laravel_telescope_production_enabled: false
+
+# Telescope Security
+laravel_telescope_authorized_users: []
+  # Example:
+  # - "admin@example.com"
+  # - "developer@example.com"
+
+laravel_telescope_allowed_ips: []
+  # Example:
+  # - "192.168.1.0/24"
+  # - "10.0.0.1"
+
+laravel_telescope_middleware: "'web', 'auth'"
+laravel_telescope_remove_auth_middleware: false
+laravel_telescope_custom_config: false
+
+# Telescope Maintenance
+laravel_telescope_auto_prune: true
+laravel_telescope_prune_hour: "2"
+laravel_telescope_retention_hours: "48"
+laravel_telescope_pruning_lottery: "100"
