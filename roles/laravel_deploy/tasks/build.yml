@@ -8,7 +8,7 @@
     cmd: >
       composer install 
       {{ laravel_composer_optimize | default(true) | ternary('--optimize-autoloader', '') }} 
-      {{ laravel_app_env == 'production' | ternary('--no-dev', '') }}
+      {{ laravel_composer_no_dev | default(laravel_app_env == 'production') | ternary('--no-dev', '') }}
       --no-interaction
       --prefer-dist
     chdir: "{{ laravel_deploy_path }}"
@@ -31,7 +31,7 @@
       Status: {{ composer_install_result.changed | ternary('Dependencies updated', 'Dependencies up to date') }}
       Environment: {{ laravel_app_env }}
       Optimized: {{ laravel_composer_optimize | default(true) }}
-      Dev dependencies: {{ laravel_app_env != 'production' | ternary('Included', 'Excluded') }}
+      Dev dependencies: {{ laravel_composer_no_dev | default(laravel_app_env == 'production') | ternary('Excluded (--no-dev)', 'Included') }}
   tags: [build, composer]
 
 - name: (build) Check if package.json exists
