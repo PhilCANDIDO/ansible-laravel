@@ -1,6 +1,6 @@
 ---
 # roles/mysql/tasks/configure.yml
-# MySQL configuration tasks - Fixed for proper authentication
+# MySQL configuration tasks - Fixed for proper authentication and error handling
 
 - name: (configure) Copy MySQL configuration file
   ansible.builtin.template:
@@ -20,12 +20,13 @@
     login_unix_socket: "{{ '/var/run/mysqld/mysqld.sock' if ansible_os_family == 'Debian' else '/var/lib/mysql/mysql.sock' }}"
   register: mysql_connection_test
   when: mysql_root_password is defined and mysql_root_password != ''
+  failed_when: false
   tags: [mysql, configure]
 
 - name: (configure) Display MySQL connection status
   ansible.builtin.debug:
-    msg: "MySQL connection successful. Server version: {{ mysql_connection_test.version.full if mysql_connection_test is defined else 'Unknown' }}"
-  when: mysql_connection_test is defined and mysql_connection_test is succeeded
+    msg: "MySQL connection successful. Server version: {{ mysql_connection_test.version.full if mysql_connection_test is succeeded and mysql_connection_test.version is defined else 'Connection failed or version unavailable' }}"
+  when: mysql_connection_test is defined
   tags: [mysql, configure]
 
 - name: (configure) Create MySQL database for Laravel if specified
@@ -42,6 +43,7 @@
     - mysql_db_name != ''
     - mysql_root_password is defined
     - mysql_root_password != ''
+    - mysql_connection_test is succeeded
   tags: [mysql, configure]
 
 - name: (configure) Create MySQL user for Laravel if specified
@@ -63,6 +65,7 @@
     - mysql_db_password != ''
     - mysql_root_password is defined
     - mysql_root_password != ''
+    - mysql_connection_test is succeeded
   no_log: true
   tags: [mysql, configure]
 
@@ -78,7 +81,8 @@
     - mysql_db_user != ''
     - mysql_db_password is defined
     - mysql_db_password != ''
-  ignore_errors: true
+    - mysql_connection_test is succeeded
+  failed_when: false
   tags: [mysql, configure]
 
 - name: (configure) Display Laravel user connection status

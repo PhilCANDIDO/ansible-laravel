@@ -9,19 +9,19 @@ laravel_versions:
       version: "8.2"  # Laravel 11 requires PHP 8.2 minimum (official requirement)
       extensions:
         # Core PHP extensions required by Laravel 11 (official documentation)
-        - ctype
-        - curl
-        - dom
-        - fileinfo
-        - filter
-        - hash
-        - mbstring
-        - openssl
-        - pcre
-        - pdo
-        - session
-        - tokenizer
-        - xml
+        - ctype      # Ctype PHP Extension
+        - curl       # cURL PHP Extension  
+        - dom        # DOM PHP Extension
+        - fileinfo   # Fileinfo PHP Extension
+        - filter     # Filter PHP Extension
+        - hash       # Hash PHP Extension
+        - mbstring   # Mbstring PHP Extension
+        - openssl    # OpenSSL PHP Extension
+        - pcre       # PCRE PHP Extension
+        - pdo        # PDO PHP Extension
+        - session    # Session PHP Extension
+        - tokenizer  # Tokenizer PHP Extension
+        - xml        # XML PHP Extension
         # Additional extensions for Laravel functionality
         - bcmath      # For precise arithmetic operations
         - gd          # For image manipulation
