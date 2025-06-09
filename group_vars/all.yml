@@ -1,64 +1,221 @@
 ---
-# Variables for all hosts
+# Variables for Laravel 11 environment prerequisites ONLY
+# Application-specific variables should be in vars/app-name.yml
 
-# Laravel version
+# =============================================================================
+# LARAVEL VERSION CONFIGURATION
+# =============================================================================
 laravel_version: "11"  # Options: 11, 10
 
-# PHP configuration
+# =============================================================================
+# PHP CONFIGURATION
+# =============================================================================
 php_version: "{{ laravel_versions[laravel_version].php.version }}"
 php_extensions: "{{ laravel_versions[laravel_version].php.extensions }}"
-php_memory_limit: "128M"
+php_memory_limit: "256M"
 php_post_max_size: "64M"
 php_upload_max_filesize: "64M"
-php_max_execution_time: 60
+php_max_execution_time: 120
 php_timezone: "UTC"
 
-# Composer configuration
+# PHP Opcache Settings
+php_opcache_enable: 1
+php_opcache_memory_consumption: 256
+php_opcache_interned_strings_buffer: 16
+php_opcache_max_accelerated_files: 10000
+php_opcache_validate_timestamps: 1
+php_opcache_revalidate_freq: 2
+php_opcache_enable_cli: 1
+
+# =============================================================================
+# COMPOSER CONFIGURATION
+# =============================================================================
 composer_version: "{{ laravel_versions[laravel_version].composer.version }}"
 composer_global_packages:
   - "laravel/installer"
 
-# Node.js configuration
+# =============================================================================
+# NODE.JS CONFIGURATION
+# =============================================================================
 nodejs_version: "{{ laravel_versions[laravel_version].nodejs.version }}"
 nodejs_npm_global_packages:
-  - name: "@vue/cli"
   - name: "vite"
+  - name: "@vue/cli"
 
-# Database configuration
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
 db_engine: "mysql"  # Options: mysql, mariadb, postgresql
 
 # MySQL configuration (when db_engine is mysql)
 mysql_version: "{{ laravel_versions[laravel_version].databases.mysql.version }}"
-mysql_root_password: "secure_password_change_me"
-mysql_db_name: "laravel"
-mysql_db_user: "laravel"
-mysql_db_password: "laravel_password_change_me"
+mysql_root_password: ""  # MUST be set in inventory or vault
+mysql_bind_address: "127.0.0.1"
+mysql_port: 3306
+mysql_max_connections: 151
+mysql_innodb_buffer_pool_size: "256M"
 
 # MariaDB configuration (when db_engine is mariadb)
 mariadb_version: "{{ laravel_versions[laravel_version].databases.mariadb.version }}"
-mariadb_root_password: "secure_password_change_me"
-mariadb_db_name: "laravel"
-mariadb_db_user: "laravel"
-mariadb_db_password: "laravel_password_change_me"
+mariadb_root_password: ""  # MUST be set in inventory or vault
+mariadb_bind_address: "127.0.0.1"
+mariadb_port: 3306
+mariadb_max_connections: 151
+mariadb_innodb_buffer_pool_size: "256M"
 
 # PostgreSQL configuration (when db_engine is postgresql)
 postgresql_version: "{{ laravel_versions[laravel_version].databases.postgresql.version }}"
-postgresql_admin_password: "secure_password_change_me"
-postgresql_db_name: "laravel"
-postgresql_db_user: "laravel"
-postgresql_db_password: "laravel_password_change_me"
+postgresql_admin_password: ""  # MUST be set in inventory or vault
+postgresql_listen_addresses: "localhost"
+postgresql_port: 5432
+postgresql_max_connections: 100
+postgresql_shared_buffers: "256MB"
 
-# Redis configuration
+# =============================================================================
+# REDIS CONFIGURATION (OPTIONAL)
+# =============================================================================
 enable_redis: false
 redis_version: "{{ laravel_versions[laravel_version].redis.version }}"
+redis_bind_address: "127.0.0.1"
+redis_port: 6379
 redis_maxmemory: "256mb"
+redis_maxmemory_policy: "allkeys-lru"
 
-# Webserver configuration
+# =============================================================================
+# WEBSERVER CONFIGURATION
+# =============================================================================
 webserver_type: "nginx"  # Options: nginx, apache
-webserver_server_name: "laravel.local"
-webserver_server_aliases: ["www.laravel.local"]
-webserver_laravel_root: "/var/www/laravel"
-webserver_enable_ssl: false
 
-# System configuration
+# NGINX Configuration
+nginx_worker_processes: "auto"
+nginx_worker_connections: 1024
+nginx_keepalive_timeout: 65
+nginx_client_max_body_size: "64m"
+nginx_gzip: true
+
+# Apache Configuration
+apache_keepalive_timeout: 65
+apache_max_request_workers: 150
+
+# Common webserver settings
+webserver_gzip: true
+webserver_keepalive_timeout: 65
+webserver_worker_processes: "auto"
+webserver_worker_connections: 1024
+webserver_client_max_body_size: "64m"
+
+# PHP-FPM socket (auto-detected based on PHP version and OS)
+webserver_php_fpm_socket: "unix:/var/run/php/php{{ php_version }}-fpm.sock"
+
+# Webserver user/group (auto-detected based on OS and webserver type)
+webserver_user: >-
+  {%- if ansible_os_family == 'Debian' -%}
+    www-data
+  {%- elif ansible_os_family == 'RedHat' -%}
+    {%- if webserver_type == 'nginx' -%}
+      nginx
+    {%- else -%}
+      apache
+    {%- endif -%}
+  {%- else -%}
+    www-data
+  {%- endif -%}
+
+webserver_group: "{{ webserver_user }}"
+
+# =============================================================================
+# SYSTEM CONFIGURATION
+# =============================================================================
 update_cache: true
+create_base_directories: true
+create_test_files: true
+environment_type: "production"  # Options: development, staging, production
+
+# Security settings
+disable_default_sites: true
+secure_php_settings: true
+
+# =============================================================================
+# VERSION MAPPINGS (DO NOT MODIFY)
+# =============================================================================
+# These are loaded from vars/versions.yml
+# Override in inventory or application-specific files if needed
+
+# =============================================================================
+# DEPLOYMENT BEHAVIOR OVERRIDES
+# =============================================================================
+# These variables control the behavior of the environment setup
+# They do NOT affect application deployment (use deploy-laravel.yml for that)
+
+# Skip certain components if not needed
+skip_nodejs_install: false
+skip_redis_install: false
+skip_database_install: false
+
+# Force specific versions (override version mappings)
+# force_php_version: "8.3"
+# force_nodejs_version: "21.x"
+# force_mysql_version: "8.4"
+
+# Development settings (only used when environment_type != 'production')
+development_packages:
+  - "vim"
+  - "htop"
+  - "tree"
+  - "curl"
+
+# =============================================================================
+# SECURITY DEFAULTS
+# =============================================================================
+# PHP security settings
+php_expose_php: "Off"
+php_allow_url_fopen: "Off"
+php_allow_url_include: "Off"
+php_disable_functions: "exec,passthru,shell_exec,system,proc_open,popen"
+
+# Database security
+mysql_remove_anonymous_users: true
+mysql_remove_test_database: true
+mysql_disallow_root_login_remotely: true
+
+# Web server security
+webserver_hide_version: true
+webserver_disable_server_tokens: true
+
+# =============================================================================
+# PERFORMANCE TUNING
+# =============================================================================
+# These are reasonable defaults for most Laravel applications
+# Fine-tune based on your server resources and application needs
+
+# PHP Performance
+php_fpm_pm: "dynamic"
+php_fpm_max_children: 50
+php_fpm_start_servers: 5
+php_fpm_min_spare_servers: 5
+php_fpm_max_spare_servers: 35
+php_fpm_max_requests: 500
+
+# Database Performance (applied to all database engines)
+db_query_cache_size: "32M"
+db_innodb_buffer_pool_size: "{{ (ansible_memtotal_mb * 0.7) | int }}M"  # 70% of available RAM
+db_max_connections: "{{ (ansible_processor_vcpus * 25) | int }}"  # 25 connections per CPU core
+
+# Redis Performance
+redis_tcp_keepalive: 300
+redis_timeout: 300
+redis_databases: 16
+
+# =============================================================================
+# BACKUP AND MAINTENANCE
+# =============================================================================
+# Basic backup configuration for databases
+enable_database_backups: false
+backup_retention_days: 7
+backup_schedule: "0 2 * * *"  # Daily at 2 AM
+
+# Log rotation
+enable_log_rotation: true
+log_rotate_frequency: "daily"
+log_compress: true
+log_retention_days: 30
