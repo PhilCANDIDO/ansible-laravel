@@ -1,6 +1,6 @@
 ---
 # roles/postgresql/tasks/install.yml
-# PostgreSQL installation tasks
+# PostgreSQL installation tasks - FIXED
 
 - name: (install) Set distribution-specific variables
   ansible.builtin.include_vars: "{{ item }}"
@@ -13,17 +13,32 @@
   tags: [postgresql, install]
 
 # Debian/Ubuntu
-- name: (install) Add PostgreSQL repository key (Debian/Ubuntu)
-  ansible.builtin.apt_key:
-    url: "https://www.postgresql.org/media/keys/ACCC4CF8.asc"
+- name: (install) Install prerequisites for PostgreSQL repository (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
     state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: [postgresql, install]
+
+- name: (install) Add PostgreSQL repository key (Debian/Ubuntu)
+  ansible.builtin.get_url:
+    url: "https://www.postgresql.org/media/keys/ACCC4CF8.asc"
+    dest: /usr/share/keyrings/postgresql-archive-keyring.asc
+    mode: '0644'
   when: ansible_os_family == 'Debian'
   tags: [postgresql, install]
 
 - name: (install) Add PostgreSQL repository (Debian/Ubuntu)
   ansible.builtin.apt_repository:
-    repo: "deb https://apt.postgresql.org/pub/repos/apt/ {{ ansible_distribution_release }}-pgdg main"
+    repo: "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.asc] https://apt.postgresql.org/pub/repos/apt/ {{ ansible_distribution_release }}-pgdg main"
     state: present
+    filename: pgdg
     update_cache: true
   when: ansible_os_family == 'Debian'
   tags: [postgresql, install]
@@ -41,6 +56,7 @@
   ansible.builtin.dnf:
     name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-{{ ansible_distribution_major_version }}-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
     state: present
+    disable_gpg_check: true
   when: ansible_os_family == 'RedHat'
   tags: [postgresql, install]
 
@@ -52,29 +68,52 @@
   tags: [postgresql, install]
 
 # Common tasks
-- name: (install) Ensure PostgreSQL service is running and enabled
+- name: (install) Ensure PostgreSQL service is enabled
+  ansible.builtin.service:
+    name: "{{ postgresql_service }}"
+    enabled: true
+  tags: [postgresql, install]
+
+- name: (install) Check if PostgreSQL data directory exists
+  ansible.builtin.stat:
+    path: "{{ postgresql_data_dir }}/PG_VERSION"
+  register: pgdata_version
+  tags: [postgresql, install]
+
+- name: (install) Initialize PostgreSQL database (RHEL/CentOS)
+  ansible.builtin.command: "{{ postgresql_bin_path }}/postgresql-{{ postgresql_version }}-setup initdb"
+  when: 
+    - ansible_os_family == 'RedHat'
+    - not pgdata_version.stat.exists
+  register: postgresql_init_result
+  changed_when: postgresql_init_result.rc == 0
+  tags: [postgresql, install]
+
+- name: (install) Start PostgreSQL service
   ansible.builtin.service:
     name: "{{ postgresql_service }}"
     state: started
     enabled: true
   tags: [postgresql, install]
 
-- name: (install) Check if PostgreSQL initialization is needed
-  ansible.builtin.stat:
-    path: "{{ postgresql_data_dir }}/PG_VERSION"
-  register: pgdata_version
+- name: (install) Wait for PostgreSQL to be ready
+  ansible.builtin.wait_for:
+    port: "{{ postgresql_port }}"
+    host: "127.0.0.1"
+    delay: 5
+    timeout: 30
   tags: [postgresql, install]
 
-- name: (install) Set PostgreSQL admin user password
+- name: (install) Check PostgreSQL version
   become: true
   become_user: postgres
-  ansible.builtin.command: >
-    psql -c "ALTER USER postgres WITH PASSWORD '{{ postgresql_admin_password }}';"
-  when: 
-    - postgresql_admin_password is defined
-    - postgresql_admin_password != ''
-    - pgdata_version.stat.exists
-  no_log: true
-  register: postgres_password_update
-  changed_when: postgres_password_update.rc == 0
+  ansible.builtin.command: psql -c "SELECT version();"
+  register: postgresql_version_check
+  changed_when: false
+  check_mode: false
+  tags: [postgresql, install]
+
+- name: (install) Display installed PostgreSQL version
+  ansible.builtin.debug:
+    msg: "Installed PostgreSQL: {{ postgresql_version_check.stdout_lines[0] if postgresql_version_check.stdout_lines else 'Version check failed' }}"
   tags: [postgresql, install]

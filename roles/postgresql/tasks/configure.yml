@@ -1,6 +1,55 @@
 ---
 # roles/postgresql/tasks/configure.yml
-# PostgreSQL configuration tasks
+# PostgreSQL configuration tasks - FIXED
+
+- name: (configure) Ensure PostgreSQL is started before configuration
+  ansible.builtin.service:
+    name: "{{ postgresql_service }}"
+    state: started
+    enabled: true
+  tags: [postgresql, configure]
+
+- name: (configure) Check if PostgreSQL has been initialized
+  ansible.builtin.stat:
+    path: "{{ postgresql_data_dir }}/PG_VERSION"
+  register: postgresql_initialized
+  tags: [postgresql, configure]
+
+- name: (configure) Initialize PostgreSQL database (RHEL/CentOS)
+  ansible.builtin.command: "{{ postgresql_bin_path }}/postgresql-setup initdb"
+  when: 
+    - ansible_os_family == 'RedHat'
+    - not postgresql_initialized.stat.exists
+  tags: [postgresql, configure]
+
+- name: (configure) Start PostgreSQL after initialization
+  ansible.builtin.service:
+    name: "{{ postgresql_service }}"
+    state: started
+    enabled: true
+  when: not postgresql_initialized.stat.exists
+  tags: [postgresql, configure]
+
+- name: (configure) Wait for PostgreSQL to be ready
+  ansible.builtin.wait_for:
+    port: "{{ postgresql_port }}"
+    host: "127.0.0.1"
+    delay: 5
+    timeout: 30
+  tags: [postgresql, configure]
+
+- name: (configure) Set PostgreSQL superuser password
+  become: true
+  become_user: postgres
+  ansible.builtin.shell: |
+    psql -c "ALTER USER postgres WITH PASSWORD '{{ postgresql_admin_password }}';"
+  when: 
+    - postgresql_admin_password is defined
+    - postgresql_admin_password != ''
+  no_log: true
+  register: postgres_password_set
+  changed_when: postgres_password_set.rc == 0
+  tags: [postgresql, configure]
 
 - name: (configure) Set up PostgreSQL configuration
   ansible.builtin.template:
@@ -9,6 +58,7 @@
     owner: postgres
     group: postgres
     mode: '0644'
+    backup: true
   notify: Restart PostgreSQL
   tags: [postgresql, configure]
 
@@ -19,32 +69,56 @@
     owner: postgres
     group: postgres
     mode: '0640'
+    backup: true
   notify: Restart PostgreSQL
   tags: [postgresql, configure]
 
+- name: (configure) Restart PostgreSQL to apply authentication changes
+  ansible.builtin.service:
+    name: "{{ postgresql_service }}"
+    state: restarted
+  when: postgres_password_set is changed
+  tags: [postgresql, configure]
+
+- name: (configure) Wait for PostgreSQL to be ready after restart
+  ansible.builtin.wait_for:
+    port: "{{ postgresql_port }}"
+    host: "127.0.0.1"
+    delay: 5
+    timeout: 30
+  when: postgres_password_set is changed
+  tags: [postgresql, configure]
+
 - name: (configure) Create PostgreSQL database for Laravel if specified
-  become: true
-  become_user: postgres
   community.postgresql.postgresql_db:
     name: "{{ postgresql_db_name }}"
     encoding: "{{ postgresql_db_encoding }}"
     lc_collate: "{{ postgresql_db_lc_collate }}"
     lc_ctype: "{{ postgresql_db_lc_ctype }}"
     state: present
+    login_user: postgres
+    login_password: "{{ postgresql_admin_password }}"
+    login_host: "127.0.0.1"
+    login_port: "{{ postgresql_port }}"
   when: 
     - postgresql_db_name is defined
     - postgresql_db_name != ''
+    - postgresql_admin_password is defined
+    - postgresql_admin_password != ''
+  no_log: true
   tags: [postgresql, configure]
 
 - name: (configure) Create PostgreSQL user for Laravel if specified
-  become: true
-  become_user: postgres
   community.postgresql.postgresql_user:
     name: "{{ postgresql_db_user }}"
     password: "{{ postgresql_db_password }}"
     db: "{{ postgresql_db_name }}"
     priv: "ALL"
     state: present
+    login_user: postgres
+    login_password: "{{ postgresql_admin_password }}"
+    login_host: "127.0.0.1"
+    login_port: "{{ postgresql_port }}"
   when: 
     - postgresql_db_name is defined 
     - postgresql_db_name != ''
@@ -52,21 +126,59 @@
     - postgresql_db_user != ''
     - postgresql_db_password is defined
     - postgresql_db_password != ''
+    - postgresql_admin_password is defined
+    - postgresql_admin_password != ''
   no_log: true
   tags: [postgresql, configure]
 
 - name: (configure) Grant privileges to Laravel user
-  become: true
-  become_user: postgres
   community.postgresql.postgresql_privs:
     db: "{{ postgresql_db_name }}"
     role: "{{ postgresql_db_user }}"
     objs: ALL_IN_SCHEMA
     type: table
     privs: ALL
+    login_user: postgres
+    login_password: "{{ postgresql_admin_password }}"
+    login_host: "127.0.0.1"
+    login_port: "{{ postgresql_port }}"
   when: 
     - postgresql_db_name is defined 
     - postgresql_db_name != ''
     - postgresql_db_user is defined
     - postgresql_db_user != ''
+    - postgresql_admin_password is defined
+    - postgresql_admin_password != ''
+  no_log: true
+  tags: [postgresql, configure]
+
+- name: (configure) Test PostgreSQL connection with new credentials
+  community.postgresql.postgresql_info:
+    login_user: postgres
+    login_password: "{{ postgresql_admin_password }}"
+    login_host: "127.0.0.1"
+    login_port: "{{ postgresql_port }}"
+  when: 
+    - postgresql_admin_password is defined
+    - postgresql_admin_password != ''
+  no_log: true
+  register: postgresql_connection_test
+  ignore_errors: true
+  tags: [postgresql, configure]
+
+- name: (configure) Display PostgreSQL connection status
+  ansible.builtin.debug:
+    msg: |
+      PostgreSQL Configuration Status:
+      ✅ PostgreSQL service: {{ postgresql_service }}
+      ✅ PostgreSQL port: {{ postgresql_port }}
+      {% if postgresql_connection_test is defined and postgresql_connection_test is succeeded %}
+      ✅ Database connection: Working
+      {% else %}
+      ⚠️ Database connection: Please verify credentials
+      {% endif %}
+      {% if postgresql_db_name is defined and postgresql_db_name != '' %}
+      ✅ Laravel database: {{ postgresql_db_name }}
+      ✅ Laravel user: {{ postgresql_db_user }}
+      {% endif %}
   tags: [postgresql, configure]
