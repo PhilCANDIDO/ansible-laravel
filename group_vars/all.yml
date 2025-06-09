@@ -45,7 +45,7 @@ nodejs_npm_global_packages:
 # =============================================================================
 # DATABASE CONFIGURATION
 # =============================================================================
-db_engine: "postgresql"  # Options: mysql, mariadb, postgresql
+db_engine: "mysql"  # Options: mysql, mariadb, postgresql
 
 # MySQL configuration (when db_engine is mysql)
 mysql_version: "8.0"

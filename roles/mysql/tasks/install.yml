@@ -64,7 +64,7 @@
     - "'auth_socket' in mysql_auth_check.stdout"
   register: mysql_root_password_update
   changed_when: true
-  no_log: true
+  no_log: false
   tags: [mysql, install]
 
 # For systems where root doesn't use auth_socket

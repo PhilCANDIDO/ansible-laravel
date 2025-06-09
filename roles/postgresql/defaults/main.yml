@@ -40,7 +40,6 @@ postgresql_effective_io_concurrency: 2
 # Logging settings
 postgresql_log_destination: "stderr"
 postgresql_logging_collector: "on"
-postgresql_log_directory: "log"
 postgresql_log_filename: "postgresql-%Y-%m-%d_%H%M%S.log"
 postgresql_log_min_duration_statement: 1000
 postgresql_log_connections: "on"
