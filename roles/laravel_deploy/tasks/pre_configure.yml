@@ -13,29 +13,15 @@
   loop: "{{ laravel_storage_dirs }}"
   tags: [pre_configure, directories, storage]
 
-- name: (pre_configure) Create basic .env file if it doesn't exist
-  ansible.builtin.copy:
-    content: |
-      APP_NAME={{ laravel_app_name | default(app_name) }}
-      APP_ENV={{ laravel_app_env | default('production') }}
-      APP_KEY=
-      APP_DEBUG={{ laravel_app_debug | default('false') }}
-      APP_TIMEZONE={{ php_timezone | default('UTC') }}
-      APP_URL={{ laravel_app_url }}
-      
-      # Database will be configured after build
-      DB_CONNECTION={{ laravel_app_db_connection | default('mysql') }}
-      DB_HOST={{ laravel_app_db_host | default('127.0.0.1') }}
-      DB_PORT={{ laravel_app_db_port | default('3306') }}
-      DB_DATABASE={{ laravel_app_db_database | default('laravel') }}
-      DB_USERNAME={{ laravel_app_db_username | default('root') }}
-      DB_PASSWORD={{ laravel_app_db_password | default('') }}
+- name: (pre_configure) Generate Laravel "{{ laravel_deploy_path }}/.env" configuration file
+  ansible.builtin.template:
+    src: env.j2
     dest: "{{ laravel_deploy_path }}/.env"
     owner: "{{ laravel_deploy_user }}"
     group: "{{ laravel_deploy_group }}"
     mode: '0640'
-    force: false
-  tags: [pre_configure, env]
+  notify: Clear Laravel configuration cache
+  tags: [config, env]
 
 - name: (pre_configure) Set correct ownership on application files
   ansible.builtin.file:
