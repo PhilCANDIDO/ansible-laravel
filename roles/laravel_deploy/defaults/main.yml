@@ -57,9 +57,10 @@ laravel_composer_no_dev: "{{ laravel_app_env == 'production' }}"
 # NPM/ASSET BUILDING CONFIGURATION
 # =============================================================================
 laravel_use_vite: true
-laravel_npm_install_args: "{{ laravel_app_env == 'production' | ternary('--production', '') }}"
+laravel_npm_install_args: ""  # Deprecated - now handled automatically
 laravel_npm_build_command: "build"  # For Vite
 laravel_npm_build_command_mix: "production"  # For Laravel Mix
+laravel_cleanup_node_modules: true  # Clean node_modules after build in production
 
 # =============================================================================
 # LARAVEL OPTIMIZATION

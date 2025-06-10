@@ -1,7 +1,7 @@
 ---
 # Application-specific variables template
 # Copy this file and customize for your application: vars/your-app-name.yml
-# Usage: ansible-playbook -i inventory/hosts.yml site.yml -e "app_name=your-app-name"
+# Usage: ansible-playbook -i inventory/hosts.yml deploy-laravel.yml -e "app_name=your-app-name"
 
 # ============================================================================
 # APPLICATION IDENTITY
@@ -160,7 +160,7 @@ laravel_custom_env_vars: []
   #   value: "https://api.example.com"
 
 # ============================================================================
-# DEPLOYMENT CONFIGURATION
+# DEPLOYMENT CONFIGURATION (UPDATED)
 # ============================================================================
 laravel_deploy_optimize: true
 laravel_deploy_migrate: true
@@ -168,10 +168,9 @@ laravel_deploy_seed: false
 laravel_deploy_build_assets: true
 laravel_deploy_clear_cache: true
 
-# Asset Building
+# Asset Building (IMPROVED)
 laravel_use_vite: true
-laravel_npm_install_args: "--production"
-laravel_npm_build_command: "build"
+laravel_cleanup_node_modules: true  # Clean node_modules after build (production)
 
 # Artisan Commands (run during deployment)
 laravel_artisan_commands: []
@@ -240,3 +239,16 @@ laravel_protected_files:
 laravel_git_clean: true
 laravel_git_force_checkout: true
 laravel_git_depth: 1
+
+# ============================================================================
+# TROUBLESHOOTING SETTINGS
+# ============================================================================
+# Set to true to enable debug output during deployment
+deployment_debug: false
+
+# Set to true to skip certain steps during troubleshooting
+skip_composer_install: false
+skip_npm_install: false 
+skip_asset_build: false
+skip_migrations: false
+skip_optimization: false
