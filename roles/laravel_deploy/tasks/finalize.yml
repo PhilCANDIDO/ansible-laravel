@@ -1,6 +1,6 @@
 ---
 # roles/laravel_deploy/tasks/finalize.yml
-# Final permissions and cleanup tasks
+# Final permissions and cleanup tasks - IMPROVED with service validation
 
 - name: (finalize) Set correct permissions for Laravel directories
   ansible.builtin.file:
@@ -46,15 +46,91 @@
     owner: "{{ laravel_deploy_user }}"
     group: "{{ laravel_deploy_group }}"
   loop: "{{ laravel_protected_files | default(['.env', 'composer.json', 'composer.lock']) }}"
+  when: 
+    - laravel_deploy_path is defined
+    - laravel_deploy_path != ''
   tags: [finalize, security, files]
 
-- name: (finalize) Run post-deployment commands
-  ansible.builtin.command:
-    cmd: "{{ item }}"
-  loop: "{{ laravel_post_deploy_commands | default([]) }}"
+# ============================================================================
+# IMPROVED POST-DEPLOYMENT COMMANDS WITH SERVICE VALIDATION
+# ============================================================================
+- name: (finalize) Validate services before running post-deployment commands
+  block:
+    - name: (finalize) Check which services are available
+      ansible.builtin.service_facts:
+      
+    - name: (finalize) Validate each post-deployment command
+      ansible.builtin.set_fact:
+        validated_commands: "{{ validated_commands | default([]) + [item] }}"
+      loop: "{{ laravel_post_deploy_commands | default([]) }}"
+      when: 
+        - item is defined
+        - item != ''
+        - not (
+            ('supervisor' in item and 'supervisor' not in ansible_facts.services and 'supervisor.service' not in ansible_facts.services) or
+            ('mysql' in item and 'mysql' not in ansible_facts.services and 'mysql.service' not in ansible_facts.services and 'mysqld' not in ansible_facts.services) or
+            ('postgresql' in item and 'postgresql' not in ansible_facts.services and 'postgresql.service' not in ansible_facts.services) or
+            ('redis' in item and 'redis' not in ansible_facts.services and 'redis.service' not in ansible_facts.services and 'redis-server' not in ansible_facts.services)
+          )
+      tags: [finalize, validation]
+
+    - name: (finalize) Display command validation results
+      ansible.builtin.debug:
+        msg: |
+          📋 Post-deployment Command Validation:
+          
+          Original commands: {{ laravel_post_deploy_commands | default([]) | length }}
+          Validated commands: {{ validated_commands | default([]) | length }}
+          
+          {% if laravel_post_deploy_commands | default([]) | length != validated_commands | default([]) | length %}
+          ⚠️  Some commands were skipped due to missing services:
+          {% for cmd in laravel_post_deploy_commands | default([]) %}
+          {% if cmd not in validated_commands | default([]) %}
+          - {{ cmd }} (service not available)
+          {% endif %}
+          {% endfor %}
+          {% endif %}
+          
+          ✅ Commands to execute: {{ validated_commands | default([]) }}
+      when: laravel_post_deploy_commands is defined and laravel_post_deploy_commands | length > 0
+      tags: [finalize, validation]
+
   when: laravel_post_deploy_commands is defined and laravel_post_deploy_commands | length > 0
   tags: [finalize, commands]
 
+- name: (finalize) Run validated post-deployment commands
+  ansible.builtin.shell: "{{ item }}"
+  loop: "{{ validated_commands | default([]) }}"
+  when: 
+    - validated_commands is defined
+    - validated_commands | length > 0
+  register: post_deploy_results
+  failed_when: false
+  tags: [finalize, commands]
+
+- name: (finalize) Display post-deployment command results
+  ansible.builtin.debug:
+    msg: |
+      📋 Post-deployment Command Results:
+      
+      {% for result in post_deploy_results.results | default([]) %}
+      {% if result.item is defined %}
+      Command: {{ result.item }}
+      Status: {{ result.rc == 0 | ternary('✅ SUCCESS', '❌ FAILED (RC: ' + result.rc|string + ')') }}
+      {% if result.rc != 0 and result.stderr is defined %}
+      Error: {{ result.stderr }}
+      {% endif %}
+      
+      {% endif %}
+      {% endfor %}
+  when: 
+    - post_deploy_results is defined
+    - post_deploy_results.results is defined
+  tags: [finalize, commands]
+
+# ============================================================================
+# DEPLOYMENT LOGGING AND SUMMARY
+# ============================================================================
 - name: (finalize) Create deployment log entry
   ansible.builtin.lineinfile:
     path: "{{ laravel_deploy_path }}/storage/logs/deployment.log"
@@ -64,6 +140,8 @@
       - Branch: {{ laravel_repo_branch }}
       - Environment: {{ laravel_app_env }}
       - Deployed by: {{ ansible_user_id }}
+      - Server: {{ inventory_hostname }}
+      - Commands executed: {{ validated_commands | default([]) | length }}/{{ laravel_post_deploy_commands | default([]) | length }}
     create: true
     owner: "{{ laravel_deploy_user }}"
     group: "{{ laravel_deploy_group }}"
@@ -74,9 +152,9 @@
 - name: (finalize) Display deployment completion summary
   ansible.builtin.debug:
     msg: |
-      Laravel application {{ laravel_app_name | default(app_name) }} deployed successfully!
+      🎉 Laravel Application {{ laravel_app_name | default(app_name) }} Deployed Successfully!
       
-      Application Details:
+      📊 Application Details:
       ├── Name: {{ laravel_app_name | default(app_name) }}
       ├── URL: {{ laravel_app_url }}
       ├── Path: {{ laravel_deploy_path }}
@@ -84,8 +162,8 @@
       ├── Database: {{ laravel_app_db_connection }}
       └── User: {{ laravel_deploy_user }}
       
-      Actions Performed:
-      ├── Repository cloned/updated from {{ laravel_repo_branch }} ✅
+      ✅ Actions Performed:
+      ├── Repository updated from {{ laravel_repo_branch }} ✅
       ├── Dependencies installed ✅
       ├── Application key {{ laravel_app_key is defined | ternary('configured', 'generated') }} ✅
       ├── Database {{ db_connection_check is defined and db_connection_check.rc == 0 | ternary('connected', 'skipped (check connection)') }} {{ migrations is defined and migrations.changed | ternary('& migrated', '') }} ✅
@@ -94,14 +172,23 @@
       {% if laravel_telescope_install | default(false) | bool %}
       ├── Telescope {{ laravel_telescope_install | ternary('installed', 'skipped') }} ✅
       {% endif %}
-      └── Application optimized ✅
+      ├── Application optimized ✅
+      └── Post-deployment: {{ validated_commands | default([]) | length }}/{{ laravel_post_deploy_commands | default([]) | length }} commands executed ✅
       
-      Your {{ laravel_app_name | default(app_name) }} application is now live!
+      🌐 Your {{ laravel_app_name | default(app_name) }} application is now live!
       
       {% if db_connection_check is defined and db_connection_check.rc != 0 %}
       ⚠️  Database connection failed. Please check your database configuration and credentials.
       {% endif %}
       {% if laravel_telescope_install | default(false) | bool and laravel_telescope_production_enabled | default(false) | bool %}
       🔭 Telescope is available at: {{ laravel_app_url }}/{{ laravel_telescope_path | default('telescope') }}
+      {% endif %}
+      
+      💡 Next Steps:
+      - Test your application: {{ laravel_app_url }}
+      - Monitor application logs: {{ laravel_deploy_path }}/storage/logs/
+      - Check server resources and performance
+      {% if validated_commands | default([]) | length != laravel_post_deploy_commands | default([]) | length %}
+      - Review skipped post-deployment commands (missing services)
       {% endif %}
   tags: [finalize, summary]

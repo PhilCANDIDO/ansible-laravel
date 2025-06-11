@@ -1,7 +1,6 @@
 ---
 # roles/laravel_deploy/defaults/main.yml
-# Default variables for Laravel deployment role
-# IMPROVED: Safer default Artisan commands
+# Default variables for Laravel deployment role - ENHANCED
 
 # =============================================================================
 # DEPLOYMENT CONFIGURATION
@@ -106,47 +105,53 @@ laravel_health_check_enabled: true
 laravel_log_deployments: true
 
 # =============================================================================
-# CUSTOM COMMANDS - IMPROVED: Safer defaults
+# CUSTOM COMMANDS - IMPROVED WITH SERVICE VALIDATION
 # =============================================================================
-# IMPORTANT: These commands will only run if the required packages are installed
-# The deployment will check for package availability before execution
 laravel_artisan_commands: []
-  # Safe examples that don't require additional packages:
+  # Example:
+  # - "php artisan horizon:terminate"
+  # - "php artisan schedule:clear-cache"
+
+# IMPORTANT: Only include commands for services that are actually installed on your server
+# The deployment will automatically validate service availability before execution
+laravel_post_deploy_commands: []
+  # Common examples (uncomment only if the service is installed):
+  # 
+  # For queue workers (if Supervisor is installed):
+  # - "sudo systemctl restart supervisor"
+  # 
+  # For Redis (if Redis is installed and needs restart):
+  # - "sudo systemctl restart redis-server"
+  # 
+  # For web server reload (usually safe):
+  # - "sudo systemctl reload nginx"
+  # - "sudo systemctl reload apache2"
+  # 
+  # For PHP-FPM restart (if needed):
+  # - "sudo systemctl restart php8.2-fpm"
+  #
+  # For Laravel Horizon (if installed):
+  # - "php artisan horizon:terminate"
+  #
+  # For clearing Laravel caches:
   # - "php artisan cache:clear"
   # - "php artisan config:clear"
-  # - "php artisan route:clear"
-  # - "php artisan view:clear"
-  
-  # Commands that require specific packages (will be checked automatically):
-  # - "php artisan horizon:terminate"      # Requires: laravel/horizon
-  # - "php artisan schedule:clear-cache"   # Requires: Redis extension
-  # - "php artisan telescope:clear"        # Requires: laravel/telescope
-  # - "php artisan passport:keys"          # Requires: laravel/passport
-
-laravel_post_deploy_commands: []
-  # Example:
-  # - "sudo systemctl restart supervisor"
-  # - "sudo systemctl reload nginx"
 
 # =============================================================================
-# DEPENDENCY CHECKING
+# SERVICE VALIDATION CONFIGURATION - NEW
 # =============================================================================
-# Enable automatic checking of dependencies before running Artisan commands
-laravel_check_dependencies: true
+# Services that require validation before running commands
+laravel_validate_services:
+  supervisor: ["supervisor", "supervisor.service"]
+  mysql: ["mysql", "mysql.service", "mysqld", "mysqld.service"]
+  postgresql: ["postgresql", "postgresql.service", "postgres", "postgres.service"]
+  redis: ["redis", "redis.service", "redis-server", "redis-server.service"]
+  nginx: ["nginx", "nginx.service"]
+  apache: ["apache2", "apache2.service", "httpd", "httpd.service"]
+  php_fpm: ["php-fpm", "php8.2-fpm", "php8.1-fpm", "php8.0-fpm"]
 
-# Packages to check for before running specific commands
-laravel_required_packages:
-  horizon: "laravel/horizon"
-  telescope: "laravel/telescope"
-  passport: "laravel/passport"
-  breeze: "laravel/breeze"
-  jetstream: "laravel/jetstream"
-  sanctum: "laravel/sanctum"
-
-# Extensions to check for before running Redis-dependent commands
-laravel_required_extensions:
-  redis: ["redis", "predis"]
-  memcached: ["memcached"]
+# Skip service validation (set to true to run all commands without validation)
+laravel_skip_service_validation: false
 
 # =============================================================================
 # TELESCOPE CONFIGURATION
@@ -180,10 +185,14 @@ laravel_telescope_retention_hours: "48"
 laravel_telescope_pruning_lottery: "100"
 
 # =============================================================================
-# ERROR HANDLING
+# ERROR HANDLING AND DEBUGGING
 # =============================================================================
-# Continue deployment even if some Artisan commands fail
-laravel_continue_on_artisan_failure: true
+# Continue deployment even if post-deployment commands fail
+laravel_ignore_post_deploy_errors: true
 
-# Log failed commands for review
-laravel_log_failed_commands: true
+# Display detailed error information
+laravel_verbose_errors: false
+
+# Retry configuration for failed operations
+laravel_deploy_retries: 3
+laravel_deploy_retry_delay: 5
