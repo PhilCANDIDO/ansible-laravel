@@ -1,0 +1,59 @@
+---
+# roles/certbot/tasks/configure_nginx.yml
+# NGINX SSL configuration tasks
+
+- name: (configure_nginx) Create SSL configuration snippet
+  ansible.builtin.template:
+    src: nginx/ssl-params.conf.j2
+    dest: /etc/nginx/snippets/ssl-{{ certbot_primary_domain }}.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload NGINX
+  tags: [certbot, nginx, ssl-config]
+
+- name: (configure_nginx) Create security headers snippet
+  ansible.builtin.template:
+    src: nginx/security-headers.conf.j2
+    dest: /etc/nginx/snippets/security-headers.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload NGINX
+  tags: [certbot, nginx, security]
+
+- name: (configure_nginx) Update Laravel virtual host for SSL
+  ansible.builtin.template:
+    src: nginx/laravel-ssl.conf.j2
+    dest: "/etc/nginx/sites-available/{{ webserver_server_name }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+  notify: Reload NGINX
+  tags: [certbot, nginx, vhost]
+
+- name: (configure_nginx) Ensure virtual host is enabled
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ webserver_server_name }}.conf"
+    dest: "/etc/nginx/sites-enabled/{{ webserver_server_name }}.conf"
+    state: link
+  notify: Reload NGINX
+  tags: [certbot, nginx, enable]
+
+- name: (configure_nginx) Remove default NGINX site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload NGINX
+  tags: [certbot, nginx, cleanup]
+
+- name: (configure_nginx) Configure ACME challenge location
+  ansible.builtin.template:
+    src: nginx/acme-challenge.conf.j2
+    dest: /etc/nginx/snippets/acme-challenge.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload NGINX
+  tags: [certbot, nginx, acme]

@@ -1,0 +1,17 @@
+---
+# roles/certbot/vars/ubuntu-24.yml
+# Ubuntu 24.04 specific variables
+
+# Use snap for newer Ubuntu versions due to package availability
+certbot_preferred_install_method: "snap"
+
+# Snap packages
+certbot_snap_packages:
+  - "certbot"
+
+# DNS plugins via snap
+certbot_snap_dns_packages:
+  cloudflare: "certbot-dns-cloudflare"
+  route53: "certbot-dns-route53"
+  digitalocean: "certbot-dns-digitalocean"
+  google: "certbot-dns-google"

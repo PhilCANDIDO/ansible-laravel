@@ -1,0 +1,104 @@
+---
+# roles/certbot/tasks/main.yml
+# Main tasks file for Certbot SSL certificate management
+
+- name: (main) Display SSL configuration info
+  ansible.builtin.debug:
+    msg: |
+      🔐 SSL Certificate Configuration:
+      ├── Auto-generate: {{ certbot_auto_generate | ternary('✅ Enabled', '❌ Disabled') }}
+      ├── Challenge method: {{ certbot_challenge_method }}
+      ├── Primary domain: {{ certbot_primary_domain }}
+      ├── Additional domains: {{ certbot_domains | length - 1 if certbot_domains | length > 1 else 0 }}
+      ├── Email: {{ certbot_email | default('Not configured') }}
+      ├── Test mode: {{ certbot_test_mode | ternary('⚠️ Staging', '✅ Production') }}
+      └── Auto-renewal: {{ certbot_auto_renew | ternary('✅ Enabled', '❌ Disabled') }}
+  when: certbot_auto_generate | bool
+  tags: [certbot, ssl, info]
+
+- name: (main) Validate SSL configuration
+  ansible.builtin.assert:
+    that:
+      - certbot_email is defined and certbot_email != ""
+      - certbot_domains | length > 0 or webserver_server_name is defined
+    fail_msg: |
+      ❌ SSL Certificate configuration error:
+      - certbot_email must be defined and not empty
+      - Either certbot_domains must contain domains or webserver_server_name must be defined
+    success_msg: "✅ SSL Certificate configuration validated"
+  when: certbot_auto_generate | bool
+  tags: [certbot, ssl, validation]
+
+- name: (main) Auto-detect domains from webserver configuration
+  ansible.builtin.set_fact:
+    certbot_domains: >-
+      {{
+        ([webserver_server_name] + (webserver_server_aliases | default([])))
+        | select('string')
+        | select('ne', '')
+        | unique
+        | list
+      }}
+  when:
+    - certbot_auto_generate | bool
+    - certbot_auto_detect_domains | bool
+    - (certbot_domains | length == 0)
+    - webserver_server_name is defined and webserver_server_name != ""
+  tags: [certbot, ssl, domains]
+
+- name: (main) Include installation tasks
+  ansible.builtin.include_tasks: install.yml
+  when: certbot_auto_generate | bool
+  tags: [certbot, ssl, install]
+
+- name: (main) Include certificate generation tasks
+  ansible.builtin.include_tasks: generate.yml
+  when: certbot_auto_generate | bool
+  tags: [certbot, ssl, generate]
+
+- name: (main) Include webserver configuration tasks
+  ansible.builtin.include_tasks: configure_webserver.yml
+  when:
+    - certbot_auto_generate | bool
+    - certbot_auto_configure_webserver | bool
+  tags: [certbot, ssl, configure]
+
+- name: (main) Include renewal configuration tasks
+  ansible.builtin.include_tasks: renew.yml
+  when:
+    - certbot_auto_generate | bool
+    - certbot_auto_renew | bool
+  tags: [certbot, ssl, renew]
+
+- name: (main) Include monitoring tasks
+  ansible.builtin.include_tasks: monitor.yml
+  when:
+    - certbot_auto_generate | bool
+    - certbot_monitor_expiry | bool
+  tags: [certbot, ssl, monitor]
+
+- name: (main) Display SSL certificate summary
+  ansible.builtin.debug:
+    msg: |
+      🎉 SSL Certificate Configuration Complete!
+      
+      📋 Certificate Details:
+      ├── Primary Domain: {{ certbot_primary_domain }}
+      ├── All Domains: {{ certbot_domains | join(', ') }}
+      ├── Certificate Path: {{ certbot_fullchain_path }}
+      ├── Private Key Path: {{ certbot_private_key_path }}
+      └── Renewal Schedule: Daily at {{ certbot_auto_renew_hour }}:{{ '%02d' | format(certbot_auto_renew_minute | int) }}
+      
+      🔐 Security Features:
+      ├── SSL Protocols: {{ certbot_ssl_protocols }}
+      ├── HSTS: {{ certbot_hsts_max_age // 86400 }} days
+      └── Automatic Renewal: {{ certbot_auto_renew | ternary('✅ Enabled', '❌ Manual') }}
+      
+      🌐 Your Laravel application is now secured with HTTPS!
+      
+      💡 Next Steps:
+      - Test your SSL certificate: https://{{ certbot_primary_domain }}
+      - Verify SSL rating: https://www.ssllabs.com/ssltest/analyze.html?d={{ certbot_primary_domain }}
+      - Monitor certificate expiry
+  when: certbot_auto_generate | bool
+  tags: [certbot, ssl, summary]

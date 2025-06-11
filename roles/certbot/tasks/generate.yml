@@ -1,0 +1,212 @@
+---
+# roles/certbot/tasks/generate.yml
+# SSL certificate generation tasks
+
+- name: (generate) Check if certificate already exists
+  ansible.builtin.stat:
+    path: "{{ certbot_fullchain_path }}"
+  register: existing_cert
+  tags: [certbot, generate]
+
+- name: (generate) Check certificate expiry if exists
+  ansible.builtin.command: >
+    openssl x509 -in {{ certbot_fullchain_path }} -noout -checkend 2592000
+  register: cert_expiry_check
+  failed_when: false
+  changed_when: false
+  when: existing_cert.stat.exists
+  tags: [certbot, generate]
+
+- name: (generate) Set certificate renewal needed fact
+  ansible.builtin.set_fact:
+    cert_renewal_needed: >-
+      {{
+        not existing_cert.stat.exists or
+        cert_expiry_check.rc != 0 or
+        certbot_force_renewal | bool
+      }}
+  tags: [certbot, generate]
+
+- name: (generate) Display certificate status
+  ansible.builtin.debug:
+    msg: |
+      📋 Certificate Status for {{ certbot_primary_domain }}:
+      
+      ├── Certificate exists: {{ existing_cert.stat.exists | ternary('✅ Yes', '❌ No') }}
+      {% if existing_cert.stat.exists %}
+      ├── Certificate valid: {{ cert_expiry_check.rc == 0 | ternary('✅ Valid (>30 days)', '⚠️ Expires soon') }}
+      {% endif %}
+      ├── Force renewal: {{ certbot_force_renewal | ternary('✅ Yes', '❌ No') }}
+      └── Action needed: {{ cert_renewal_needed | ternary('🔄 Generate/Renew', '✅ Skip') }}
+  tags: [certbot, generate]
+
+- name: (generate) Stop services for standalone challenge
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: stopped
+  loop: "{{ certbot_services_to_stop }}"
+  when:
+    - cert_renewal_needed | bool
+    - certbot_challenge_method == 'standalone'
+  tags: [certbot, generate]
+
+- name: (generate) Generate SSL certificate using webroot challenge
+  ansible.builtin.command: >
+    certbot certonly
+    --webroot
+    --webroot-path {{ certbot_webroot_path }}
+    --email {{ certbot_email }}
+    --agree-tos
+    --non-interactive
+    --expand
+    --rsa-key-size {{ certbot_rsa_key_size }}
+    {{ '--staging' if certbot_staging else '' }}
+    {{ '--force-renewal' if certbot_force_renewal else '' }}
+    {% for domain in certbot_domains %}
+    -d {{ domain }}
+    {% endfor %}
+    {{ certbot_extra_args }}
+  register: certbot_webroot_result
+  when:
+    - cert_renewal_needed | bool
+    - certbot_challenge_method == 'webroot'
+  notify:
+    - Restart webserver
+    - Backup SSL certificates
+  tags: [certbot, generate, webroot]
+
+- name: (generate) Generate SSL certificate using standalone challenge
+  ansible.builtin.command: >
+    certbot certonly
+    --standalone
+    --email {{ certbot_email }}
+    --agree-tos
+    --non-interactive
+    --expand
+    --rsa-key-size {{ certbot_rsa_key_size }}
+    {{ '--staging' if certbot_staging else '' }}
+    {{ '--force-renewal' if certbot_force_renewal else '' }}
+    {% for domain in certbot_domains %}
+    -d {{ domain }}
+    {% endfor %}
+    {{ certbot_extra_args }}
+  register: certbot_standalone_result
+  when:
+    - cert_renewal_needed | bool
+    - certbot_challenge_method == 'standalone'
+  notify:
+    - Restart webserver
+    - Backup SSL certificates
+  tags: [certbot, generate, standalone]
+
+- name: (generate) Generate SSL certificate using DNS challenge
+  ansible.builtin.command: >
+    certbot certonly
+    --dns-{{ certbot_dns_plugin }}
+    --dns-{{ certbot_dns_plugin }}-credentials {{ certbot_dns_credentials_file }}
+    --dns-{{ certbot_dns_plugin }}-propagation-seconds {{ certbot_dns_propagation_seconds }}
+    --email {{ certbot_email }}
+    --agree-tos
+    --non-interactive
+    --expand
+    --rsa-key-size {{ certbot_rsa_key_size }}
+    {{ '--staging' if certbot_staging else '' }}
+    {{ '--force-renewal' if certbot_force_renewal else '' }}
+    {% for domain in certbot_domains %}
+    -d {{ domain }}
+    {% endfor %}
+    {{ certbot_extra_args }}
+  register: certbot_dns_result
+  when:
+    - cert_renewal_needed | bool
+    - certbot_challenge_method == 'dns'
+    - certbot_dns_plugin != ""
+  notify:
+    - Restart webserver
+    - Backup SSL certificates
+  tags: [certbot, generate, dns]
+
+- name: (generate) Start services after standalone challenge
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: started
+  loop: "{{ certbot_services_to_stop }}"
+  when:
+    - cert_renewal_needed | bool
+    - certbot_challenge_method == 'standalone'
+  tags: [certbot, generate]
+
+- name: (generate) Verify certificate was generated
+  ansible.builtin.stat:
+    path: "{{ certbot_fullchain_path }}"
+  register: new_cert_check
+  when: cert_renewal_needed | bool
+  tags: [certbot, generate]
+
+- name: (generate) Get certificate information
+  ansible.builtin.command: >
+    openssl x509 -in {{ certbot_fullchain_path }} -noout -subject -dates -issuer
+  register: cert_info
+  changed_when: false
+  when: new_cert_check.stat.exists | default(existing_cert.stat.exists)
+  tags: [certbot, generate]
+
+- name: (generate) Set proper certificate permissions
+  ansible.builtin.file:
+    path: "{{ item }}"
+    owner: root
+    group: "{{ webserver_group | default('root') }}"
+    mode: '0640'
+  loop:
+    - "{{ certbot_cert_path }}"
+    - "{{ certbot_fullchain_path }}"
+    - "{{ certbot_private_key_path }}"
+    - "{{ certbot_chain_path }}"
+  when: new_cert_check.stat.exists | default(existing_cert.stat.exists)
+  tags: [certbot, generate]
+
+- name: (generate) Display certificate generation result
+  ansible.builtin.debug:
+    msg: |
+      🎉 SSL Certificate {{ cert_renewal_needed | ternary('Generated', 'Already exists') }}!
+      
+      📋 Certificate Details:
+      {% if cert_info.stdout is defined %}
+      {{ cert_info.stdout }}
+      {% endif %}
+      
+      📂 Certificate Files:
+      ├── Full Chain: {{ certbot_fullchain_path }}
+      ├── Private Key: {{ certbot_private_key_path }}
+      ├── Certificate: {{ certbot_cert_path }}
+      └── Chain: {{ certbot_chain_path }}
+      
+      🔐 Domains Covered:
+      {% for domain in certbot_domains %}
+      ├── {{ domain }}
+      {% endfor %}
+      
+      {% if certbot_staging %}
+      ⚠️  This is a STAGING certificate for testing purposes!
+      {% else %}
+      ✅ Production certificate ready for use!
+      {% endif %}
+  when: new_cert_check.stat.exists | default(existing_cert.stat.exists)
+  tags: [certbot, generate]
+
+- name: (generate) Fail if certificate generation failed
+  ansible.builtin.fail:
+    msg: |
+      ❌ SSL Certificate generation failed!
+      
+      Please check:
+      - Domain DNS configuration
+      - Firewall settings (ports 80/443)
+      - Webserver configuration
+      - Let's Encrypt rate limits
+      
+      Logs: {{ certbot_logs_dir }}
+  when:
+    - cert_renewal_needed | bool
+    - not (new_cert_check.stat.exists | default(false))
+  tags: [certbot, generate]

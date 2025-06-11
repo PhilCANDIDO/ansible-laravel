@@ -1,0 +1,149 @@
+---
+# roles/certbot/tasks/install.yml
+# Certbot installation tasks for various distributions
+
+- name: (install) Set distribution-specific variables
+  ansible.builtin.include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - "default.yml"
+  tags: [certbot, install]
+
+- name: (install) Install EPEL repository (RHEL/CentOS)
+  ansible.builtin.package:
+    name: epel-release
+    state: present
+  when: ansible_os_family == 'RedHat'
+  tags: [certbot, install]
+
+- name: (install) Install snapd for snap installation method
+  ansible.builtin.package:
+    name: snapd
+    state: present
+  when: certbot_install_method == 'snap'
+  tags: [certbot, install]
+
+- name: (install) Install Certbot via package manager
+  ansible.builtin.package:
+    name: "{{ certbot_packages }}"
+    state: present
+    update_cache: true
+  when: certbot_install_method == 'package'
+  tags: [certbot, install]
+
+- name: (install) Install Certbot via snap
+  community.general.snap:
+    name: certbot
+    classic: true
+    state: present
+  when: certbot_install_method == 'snap'
+  tags: [certbot, install]
+
+- name: (install) Create symlink for snap certbot
+  ansible.builtin.file:
+    src: /snap/bin/certbot
+    dest: /usr/local/bin/certbot
+    state: link
+  when: certbot_install_method == 'snap'
+  tags: [certbot, install]
+
+- name: (install) Install DNS challenge plugins
+  ansible.builtin.package:
+    name: "{{ certbot_dns_packages[certbot_dns_plugin] }}"
+    state: present
+  when:
+    - certbot_challenge_method == 'dns'
+    - certbot_dns_plugin != ""
+    - certbot_dns_plugin in certbot_dns_packages
+    - certbot_install_method == 'package'
+  tags: [certbot, install, dns]
+
+- name: (install) Install DNS plugin via snap
+  community.general.snap:
+    name: "certbot-dns-{{ certbot_dns_plugin }}"
+    state: present
+  when:
+    - certbot_challenge_method == 'dns'
+    - certbot_dns_plugin != ""
+    - certbot_install_method == 'snap'
+  tags: [certbot, install, dns]
+
+- name: (install) Create required Certbot directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ certbot_config_dir }}"
+    - "{{ certbot_work_dir }}"
+    - "{{ certbot_logs_dir }}"
+    - "{{ certbot_config_dir }}/accounts"
+    - "{{ certbot_config_dir }}/archive"
+    - "{{ certbot_config_dir }}/live"
+    - "{{ certbot_config_dir }}/renewal"
+  tags: [certbot, install]
+
+- name: (install) Create backup directory
+  ansible.builtin.file:
+    path: "{{ certbot_backup_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  when: certbot_backup_certificates | bool
+  tags: [certbot, install]
+
+- name: (install) Create webroot challenge directory
+  ansible.builtin.file:
+    path: "{{ certbot_webroot_path }}/.well-known/acme-challenge"
+    state: directory
+    owner: "{{ webserver_user | default('www-data') }}"
+    group: "{{ webserver_group | default('www-data') }}"
+    mode: '0755'
+    recurse: true
+  when: certbot_challenge_method == 'webroot'
+  tags: [certbot, install]
+
+- name: (install) Create DNS credentials file
+  ansible.builtin.template:
+    src: "dns-{{ certbot_dns_plugin }}.ini.j2"
+    dest: "{{ certbot_dns_credentials_file }}"
+    owner: root
+    group: root
+    mode: '0600'
+  when:
+    - certbot_challenge_method == 'dns'
+    - certbot_dns_plugin != ""
+  tags: [certbot, install, dns]
+
+- name: (install) Verify Certbot installation
+  ansible.builtin.command: certbot --version
+  register: certbot_version_check
+  changed_when: false
+  check_mode: false
+  tags: [certbot, install]
+
+- name: (install) Display Certbot installation summary
+  ansible.builtin.debug:
+    msg: |
+      📦 Certbot Installation Complete:
+      
+      ├── Installation method: {{ certbot_install_method }}
+      ├── Version: {{ certbot_version_check.stdout if certbot_version_check.stdout is defined else 'Unknown' }}
+      ├── Challenge method: {{ certbot_challenge_method }}
+      {% if certbot_challenge_method == 'dns' and certbot_dns_plugin != "" %}
+      ├── DNS plugin: {{ certbot_dns_plugin }}
+      ├── DNS credentials: {{ certbot_dns_credentials_file }}
+      {% endif %}
+      {% if certbot_challenge_method == 'webroot' %}
+      ├── Webroot path: {{ certbot_webroot_path }}
+      {% endif %}
+      └── Config directory: {{ certbot_config_dir }}
+      
+      ✅ Ready for certificate generation!
+  tags: [certbot, install]

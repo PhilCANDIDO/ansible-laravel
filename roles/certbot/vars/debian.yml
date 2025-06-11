@@ -1,0 +1,34 @@
+---
+# roles/certbot/vars/debian.yml
+# Certbot variables for Debian-based distributions
+
+# Certbot packages
+certbot_packages:
+  - "certbot"
+  - "python3-certbot"
+
+# DNS challenge plugins
+certbot_dns_packages:
+  cloudflare: "python3-certbot-dns-cloudflare"
+  route53: "python3-certbot-dns-route53"
+  digitalocean: "python3-certbot-dns-digitalocean"
+  google: "python3-certbot-dns-google"
+  ovh: "python3-certbot-dns-ovh"
+  rfc2136: "python3-certbot-dns-rfc2136"
+
+# Web server plugins
+certbot_webserver_packages:
+  nginx: "python3-certbot-nginx"
+  apache: "python3-certbot-apache"
+
+# System paths
+certbot_config_dir: "/etc/letsencrypt"
+certbot_work_dir: "/var/lib/letsencrypt"
+certbot_logs_dir: "/var/log/letsencrypt"
+
+# Service names
+nginx_service: "nginx"
+apache_service: "apache2"
+
+# Default webroot path
+certbot_default_webroot: "/var/www/html"

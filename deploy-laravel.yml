@@ -1,8 +1,5 @@
 ---
-# Deploy a Laravel application to servers using modular roles
-# Supports application-specific variable files
-
-- name: Deploy Laravel Application
+- name: Deploy Laravel Application with SSL Support
   hosts: all
   become: true
   
@@ -52,10 +49,10 @@
           - app_repo_branch: Git branch to deploy
         success_msg: "✅ Required application variables validated"
 
-    - name: 🚀 Display deployment information
+    - name: 🚀 Display deployment information including SSL
       ansible.builtin.debug:
         msg: |
-          🚀 Starting Laravel application deployment using modular roles
+          🚀 Starting Laravel application deployment with SSL support
           📱 Application: {{ app_name }}
           📊 Repository: {{ app_repo_url }}
           🌿 Branch: {{ app_repo_branch }}
@@ -63,6 +60,12 @@
           👤 Webserver user: {{ webserver_user }}
           🌐 Environment: {{ laravel_app_env | default('production') }}
           🌍 URL: {{ laravel_app_url }}
+          🔐 SSL enabled: {{ webserver_enable_ssl | default(false) | ternary('✅ Yes', '❌ No') }}
+          {% if webserver_enable_ssl | default(false) %}
+          🔗 HTTPS URL: https://{{ webserver_server_name }}
+          📧 SSL email: {{ certbot_email | default('Not configured') }}
+          🎯 SSL method: {{ certbot_challenge_method | default('webroot') }}
+          {% endif %}
           {% if laravel_telescope_install | default(false) | bool %}
           🔭 Telescope: {{ laravel_telescope_install | ternary('Will be installed', 'Skipped') }}
           {% endif %}
@@ -91,6 +94,11 @@
     - role: laravel_deploy
       tags: [deploy, laravel]
     
+    # SSL certificate generation and configuration (AFTER application deployment)
+    - role: certbot
+      when: webserver_enable_ssl | default(false) | bool
+      tags: [deploy, ssl, certbot]
+    
     # Optional Telescope installation and configuration
     - role: laravel_telescope
       when: laravel_telescope_install | default(false) | bool
@@ -98,7 +106,7 @@
 
   # Post-deployment tasks
   post_tasks:
-    - name: 🎊 Final deployment summary
+    - name: 🎊 Final deployment summary with SSL status
       ansible.builtin.debug:
         msg: |
           
@@ -107,17 +115,29 @@
           📋 Summary:
           ├── Application: {{ app_name }} ✅
           ├── Environment: {{ laravel_app_env | default('production') }} ✅
-          ├── URL: {{ laravel_app_url }} ✅
+          ├── HTTP URL: {{ laravel_app_url }} ✅
+          {% if webserver_enable_ssl | default(false) %}
+          ├── HTTPS URL: https://{{ webserver_server_name }} ✅
+          ├── SSL Certificate: {{ certbot_primary_domain | default(webserver_server_name) }} ✅
+          ├── SSL Auto-renewal: {{ certbot_auto_renew | default(true) | ternary('✅ Enabled', '❌ Manual') }}
+          {% endif %}
           ├── Path: {{ webserver_laravel_root }} ✅
           {% if laravel_telescope_install | default(false) | bool %}
           ├── Telescope: Installed {% if laravel_telescope_production_enabled | default(false) %}(Production enabled){% else %}(Dev only){% endif %} ✅
           {% endif %}
           └── Deployment: {{ ansible_date_time.iso8601 }} ✅
           
-          🌐 Your {{ app_name }} application is ready!
+          🌐 Your {{ app_name }} application is ready{% if webserver_enable_ssl | default(false) %} with HTTPS{% endif %}!
           
           📚 Next Steps:
+          {% if webserver_enable_ssl | default(false) %}
+          - Test HTTP redirect: http://{{ webserver_server_name }}
+          - Test HTTPS: https://{{ webserver_server_name }}
+          - Verify SSL: https://www.ssllabs.com/ssltest/analyze.html?d={{ webserver_server_name }}
+          {% else %}
           - Test your application: {{ laravel_app_url }}
+          - Consider enabling SSL with webserver_enable_ssl: true
+          {% endif %}
           {% if laravel_telescope_install | default(false) | bool and (laravel_telescope_production_enabled | default(false) | bool or laravel_app_env != 'production') %}
           - Access Telescope: {{ laravel_app_url }}/{{ laravel_telescope_path | default('telescope') }}
           {% endif %}
