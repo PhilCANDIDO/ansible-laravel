@@ -1,6 +1,7 @@
 ---
 # roles/laravel_deploy/defaults/main.yml
 # Default variables for Laravel deployment role
+# IMPROVED: Safer default Artisan commands
 
 # =============================================================================
 # DEPLOYMENT CONFIGURATION
@@ -105,17 +106,47 @@ laravel_health_check_enabled: true
 laravel_log_deployments: true
 
 # =============================================================================
-# CUSTOM COMMANDS
+# CUSTOM COMMANDS - IMPROVED: Safer defaults
 # =============================================================================
+# IMPORTANT: These commands will only run if the required packages are installed
+# The deployment will check for package availability before execution
 laravel_artisan_commands: []
-  # Example:
-  # - "php artisan horizon:terminate"
-  # - "php artisan schedule:clear-cache"
+  # Safe examples that don't require additional packages:
+  # - "php artisan cache:clear"
+  # - "php artisan config:clear"
+  # - "php artisan route:clear"
+  # - "php artisan view:clear"
+  
+  # Commands that require specific packages (will be checked automatically):
+  # - "php artisan horizon:terminate"      # Requires: laravel/horizon
+  # - "php artisan schedule:clear-cache"   # Requires: Redis extension
+  # - "php artisan telescope:clear"        # Requires: laravel/telescope
+  # - "php artisan passport:keys"          # Requires: laravel/passport
 
 laravel_post_deploy_commands: []
   # Example:
   # - "sudo systemctl restart supervisor"
   # - "sudo systemctl reload nginx"
+
+# =============================================================================
+# DEPENDENCY CHECKING
+# =============================================================================
+# Enable automatic checking of dependencies before running Artisan commands
+laravel_check_dependencies: true
+
+# Packages to check for before running specific commands
+laravel_required_packages:
+  horizon: "laravel/horizon"
+  telescope: "laravel/telescope"
+  passport: "laravel/passport"
+  breeze: "laravel/breeze"
+  jetstream: "laravel/jetstream"
+  sanctum: "laravel/sanctum"
+
+# Extensions to check for before running Redis-dependent commands
+laravel_required_extensions:
+  redis: ["redis", "predis"]
+  memcached: ["memcached"]
 
 # =============================================================================
 # TELESCOPE CONFIGURATION
@@ -147,3 +178,12 @@ laravel_telescope_auto_prune: true
 laravel_telescope_prune_hour: "2"
 laravel_telescope_retention_hours: "48"
 laravel_telescope_pruning_lottery: "100"
+
+# =============================================================================
+# ERROR HANDLING
+# =============================================================================
+# Continue deployment even if some Artisan commands fail
+laravel_continue_on_artisan_failure: true
+
+# Log failed commands for review
+laravel_log_failed_commands: true
