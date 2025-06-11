@@ -1,13 +1,12 @@
 ---
-# Application-specific variables template
-# Copy this file and customize for your application: vars/your-app-name.yml
-# Usage: ansible-playbook -i inventory/hosts.yml deploy-laravel.yml -e "app_name=your-app-name"
+# Application-specific variables for example-app
+# Usage: ansible-playbook -i inventory/hosts.yml deploy-laravel.yml -e "app_name=example-app"
 
 # ============================================================================
 # APPLICATION IDENTITY
 # ============================================================================
 app_name: "example-app"
-app_display_name: "Example Laravel Application"
+app_display_name: "Example Application"
 
 # ============================================================================
 # LARAVEL CONFIGURATION
@@ -17,70 +16,63 @@ laravel_app_name: "{{ app_display_name }}"
 laravel_app_env: "production"  # Options: local, development, staging, production
 laravel_app_debug: "false"
 laravel_app_key: ""  # Will be generated automatically if empty
-laravel_app_timezone: "UTC"
+laravel_app_timezone: "Europe/Paris"
 
 # ============================================================================
 # WEB SERVER CONFIGURATION
 # ============================================================================
 webserver_type: "nginx"  # Options: nginx, apache
-webserver_server_name: "example-app.com"
+webserver_server_name: "example-app.cpf-it.org"
 webserver_server_aliases: 
-  - "www.example-app.com"
+  - "www.example-app.cpf-it.org"
 webserver_laravel_root: "/var/www/example-app"
-webserver_enable_ssl: false
-# webserver_ssl_certificate: "/etc/ssl/certs/example-app.crt"
-# webserver_ssl_certificate_key: "/etc/ssl/private/example-app.key"
+webserver_enable_ssl: true
+webserver_ssl_certificate: "/etc/ssl/certs/example-app.crt"
+webserver_ssl_certificate_key: "/etc/ssl/private/example-app.key"
 
 # ============================================================================
-# APPLICATION REPOSITORY (for deployment)
+# APPLICATION REPOSITORY
 # ============================================================================
-app_repo_url: "https://github.com/yourusername/example-app.git"
+app_repo_url: "https://github.com/myname/example-app.git"
 app_repo_branch: "main"
-# app_repo_deploy_key: "/path/to/deploy/key"  # SSH deploy key if needed
+# app_repo_deploy_key: "/home/deploy/.ssh/example-app_deploy_key"  # If private repo
 skip_app_deployment: false  # Set to true to skip automatic deployment
 
 # ============================================================================
 # DATABASE CONFIGURATION
 # ============================================================================
-db_engine: "mysql"  # Options: mysql, mariadb, postgresql
+db_engine: "mysql"  # Using PostgreSQL for better performance
 
 # MySQL Configuration
 mysql_version: "8.0"
-mysql_db_name: "example_app"
-mysql_db_user: "example_user"
+mysql_db_name: "example-app"
+mysql_db_user: "app_user"
 mysql_db_password: "CHANGE_ME_secure_password!"
-mysql_root_password: "CHANGE_ME_root_password!"
+mysql_root_password: "CHANGE_ME_secure_password!"
 
-# MariaDB Configuration (alternative to MySQL)
-# mariadb_version: "10.11"
-# mariadb_db_name: "example_app"
-# mariadb_db_user: "example_user"
-# mariadb_db_password: "CHANGE_ME_secure_password!"
-# mariadb_root_password: "CHANGE_ME_root_password!"
-
-# PostgreSQL Configuration (alternative to MySQL)
-# postgresql_version: "15"
-# postgresql_db_name: "example_app"
-# postgresql_db_user: "example_user"
-# postgresql_db_password: "CHANGE_ME_secure_password!"
-# postgresql_admin_password: "CHANGE_ME_admin_password!"
+# PostgreSQL Configuration
+postgresql_version: "15"
+postgresql_db_name: "example-app"
+postgresql_db_user: "app_user"
+postgresql_db_password: "CHANGE_ME_secure_password!"
+postgresql_admin_password: "CHANGE_ME_secure_password!"
 
 # ============================================================================
-# REDIS CONFIGURATION (optional)
+# REDIS CONFIGURATION
 # ============================================================================
-enable_redis: false
-# redis_version: "7.0"
-# redis_maxmemory: "256mb"
-# redis_requirepass: "CHANGE_ME_redis_password!"
+enable_redis: true
+redis_version: "7.0"
+redis_maxmemory: "512mb"
+redis_requirepass: ""
 
 # ============================================================================
 # PHP CONFIGURATION
 # ============================================================================
 php_version: "8.2"
-php_memory_limit: "256M"
-php_post_max_size: "64M"
-php_upload_max_filesize: "64M"
-php_max_execution_time: 120
+php_memory_limit: "512M"  # Higher memory for data processing
+php_post_max_size: "100M"
+php_upload_max_filesize: "100M"
+php_max_execution_time: 300  # Longer execution for database operations
 php_timezone: "{{ laravel_app_timezone }}"
 
 # ============================================================================
@@ -89,6 +81,7 @@ php_timezone: "{{ laravel_app_timezone }}"
 composer_version: "latest"
 composer_global_packages:
   - "laravel/installer"
+  - "laravel/pint"  # Code style fixer
 
 # ============================================================================
 # NODE.JS CONFIGURATION
@@ -96,55 +89,57 @@ composer_global_packages:
 nodejs_version: "20.x"
 nodejs_npm_global_packages:
   - name: "vite"
+  - name: "@vue/cli"
+  - name: "typescript"
 
 # ============================================================================
 # LARAVEL ENVIRONMENT VARIABLES
 # ============================================================================
-laravel_app_url: "http{{ webserver_enable_ssl | ternary('s', '') }}://{{ webserver_server_name }}"
+laravel_app_url: "https://{{ webserver_server_name }}"
 
 # Database Connection (automatically configured based on db_engine)
 laravel_app_db_connection: "{{ db_engine }}"
 laravel_app_db_host: "127.0.0.1"
-laravel_app_db_port: "{{ db_engine == 'postgresql' | ternary('5432', '3306') }}"
-laravel_app_db_database: "{{ mysql_db_name if db_engine == 'mysql' else (mariadb_db_name if db_engine == 'mariadb' else postgresql_db_name) }}"
-laravel_app_db_username: "{{ mysql_db_user if db_engine == 'mysql' else (mariadb_db_user if db_engine == 'mariadb' else postgresql_db_user) }}"
-laravel_app_db_password: "{{ mysql_db_password if db_engine == 'mysql' else (mariadb_db_password if db_engine == 'mariadb' else postgresql_db_password) }}"
+laravel_app_db_port: "5432"
+laravel_app_db_database: "{{ postgresql_db_name }}"
+laravel_app_db_username: "{{ postgresql_db_user }}"
+laravel_app_db_password: "{{ postgresql_db_password }}"
 
 # Redis Configuration
-laravel_app_redis_host: "{{ enable_redis | ternary('127.0.0.1', 'null') }}"
-laravel_app_redis_password: "{{ redis_requirepass if enable_redis else 'null' }}"
-laravel_app_redis_port: "{{ enable_redis | ternary('6379', 'null') }}"
+laravel_app_redis_host: "127.0.0.1"
+laravel_app_redis_password: "{{ redis_requirepass }}"
+laravel_app_redis_port: "6379"
 
-# Session Configuration
-laravel_session_driver: "{{ enable_redis | ternary('redis', 'database') }}"
+# Session Configuration (using Redis for performance)
+laravel_session_driver: "redis"
 laravel_session_lifetime: "120"
 laravel_session_encrypt: "false"
 laravel_session_path: "/"
 laravel_session_domain: "null"
 
-# Cache Configuration
-laravel_cache_store: "{{ enable_redis | ternary('redis', 'database') }}"
+# Cache Configuration (using Redis)
+laravel_cache_store: "redis"
 laravel_cache_prefix: "{{ app_name }}_cache_"
 
-# Queue Configuration
-laravel_queue_connection: "{{ enable_redis | ternary('redis', 'database') }}"
+# Queue Configuration (using Redis)
+laravel_queue_connection: "redis"
 
 # Mail Configuration
-laravel_mail_mailer: "log"  # Use "smtp" for production
-laravel_mail_host: "127.0.0.1"
-laravel_mail_port: "2525"
-laravel_mail_username: "null"
-laravel_mail_password: "null"
-laravel_mail_encryption: "null"
-laravel_mail_from_address: "hello@{{ webserver_server_name }}"
+laravel_mail_mailer: "smtp"  # Using SMTP for production
+laravel_mail_host: "smtp.example.com"
+laravel_mail_port: "587"
+laravel_mail_username: "noreply@example.com"
+laravel_mail_password: "CHANGE_ME_smtp_password!"
+laravel_mail_encryption: "tls"
+laravel_mail_from_address: "noreply@{{ webserver_server_name }}"
 laravel_mail_from_name: "{{ laravel_app_name }}"
 
 # Logging Configuration
 laravel_log_channel: "stack"
-laravel_log_level: "{{ laravel_app_env == 'production' | ternary('error', 'debug') }}"
+laravel_log_level: "error"  # Production logging
 
 # Broadcasting Configuration
-laravel_broadcast_connection: "log"
+laravel_broadcast_connection: "redis"
 
 # Filesystem Configuration
 laravel_filesystem_disk: "local"
@@ -152,37 +147,38 @@ laravel_filesystem_disk: "local"
 # ============================================================================
 # CUSTOM ENVIRONMENT VARIABLES
 # ============================================================================
-laravel_custom_env_vars: []
-  # Example:
-  # - key: "API_KEY"
-  #   value: "your-api-key-here"
-  # - key: "EXTERNAL_API_URL"
-  #   value: "https://api.example.com"
+laravel_custom_env_vars:
+  - key: "APP_API_KEY"
+    value: "aaaaaaaaa-bbbbbbbbb-ccccccccc-ddddddddd"
+  - key: "APP_DATABASE_TIMEOUT"
+    value: "30"
+  - key: "APP_MAX_CONNECTIONS"
+    value: "100"
 
 # ============================================================================
-# DEPLOYMENT CONFIGURATION (UPDATED)
+# DEPLOYMENT CONFIGURATION
 # ============================================================================
 laravel_deploy_optimize: true
 laravel_deploy_migrate: true
-laravel_deploy_seed: false
+laravel_deploy_seed: false  # Don't seed in production
 laravel_deploy_build_assets: true
 laravel_deploy_clear_cache: true
 
-# Asset Building (IMPROVED)
+# Asset Building
 laravel_use_vite: true
-laravel_cleanup_node_modules: true  # Clean node_modules after build (production)
+laravel_npm_install_args: "--production"
+laravel_npm_build_command: "build"
 
-# Artisan Commands (run during deployment)
-laravel_artisan_commands: []
-  # Example:
-  # - "php artisan horizon:terminate"
-  # - "php artisan schedule:clear-cache"
+# Custom Artisan Commands (run during deployment)
+laravel_artisan_commands:
+  - "php artisan cache:clear"
+  - "php artisan config:clear" 
+  - "php artisan route:clear"
+  - "php artisan view:clear"
 
 # Post-deployment Commands
-laravel_post_deploy_commands: []
-  # Example:
-  # - "sudo systemctl restart supervisor"
-  # - "sudo systemctl reload nginx"
+laravel_post_deploy_commands:
+  - "sudo systemctl reload nginx"
 
 # ============================================================================
 # PERFORMANCE CONFIGURATION
@@ -206,11 +202,17 @@ laravel_disable_server_signature: true
 # ============================================================================
 laravel_health_check_enabled: true
 laravel_health_check_path: "/health"
-laravel_monitoring_enabled: false
+laravel_monitoring_enabled: true
 
-laravel_backup_enabled: false
-laravel_backup_schedule: "0 2 * * *"  # Daily at 2 AM
-laravel_backup_retention_days: 7
+laravel_backup_enabled: true
+laravel_backup_schedule: "0 3 * * *"  # Daily at 3 AM
+laravel_backup_retention_days: 14  # Keep 2 weeks
+
+# ============================================================================
+# TELESCOPE CONFIGURATION (Development/Staging only)
+# ============================================================================
+laravel_telescope_install: false  # Disabled in production
+laravel_telescope_production_enabled: false
 
 # ============================================================================
 # FILE PERMISSIONS AND DIRECTORIES
@@ -238,7 +240,7 @@ laravel_protected_files:
 # ============================================================================
 laravel_git_clean: true
 laravel_git_force_checkout: true
-laravel_git_depth: 1
+laravel_git_depth: 1  # Shallow clone for faster deployment
 
 # ============================================================================
 # TROUBLESHOOTING SETTINGS
