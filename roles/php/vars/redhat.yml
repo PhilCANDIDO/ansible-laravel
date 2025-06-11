@@ -21,6 +21,7 @@ php_packages:
   - "php-tokenizer"
   - "php-json"
   - "php-process"
+  - "php-redis"
 
 php_conf_dir: "/etc/php.d"
 php_fpm_service: "php-fpm"
