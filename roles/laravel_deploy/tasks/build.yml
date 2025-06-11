@@ -1,7 +1,7 @@
 ---
 # roles/laravel_deploy/tasks/build.yml
 # Composer installation and asset building tasks
-# FIXED: Vite build issue with production dependencies
+# FIXED: Conditional checks for mix_config_file and vite_config_file
 
 - name: (build) Install Composer dependencies
   ansible.builtin.command:
@@ -61,11 +61,10 @@
         path: "{{ laravel_deploy_path }}/vite.config.js"
       register: vite_config_file
 
-    - name: (build) Check if Mix config exists (fallback)
+    - name: (build) Check if Mix config exists
       ansible.builtin.stat:
         path: "{{ laravel_deploy_path }}/webpack.mix.js"
       register: mix_config_file
-      when: not vite_config_file.stat.exists
 
     - name: (build) Verify Vite is available
       ansible.builtin.command:
@@ -102,6 +101,7 @@
         NODE_ENV: production
       when: 
         - mix_config_file.stat.exists
+        - not vite_config_file.stat.exists
         - not (laravel_use_vite | default(true) | bool)
       register: mix_build_result
       changed_when: true
@@ -115,7 +115,7 @@
       when: 
         - laravel_app_env == 'production'
         - laravel_cleanup_node_modules | default(true) | bool
-        - (vite_build_result is succeeded) or (mix_build_result is succeeded)
+        - (vite_build_result is defined and vite_build_result.changed) or (mix_build_result is defined and mix_build_result.changed)
 
   when: 
     - package_json_file.stat.exists
@@ -127,7 +127,7 @@
     msg: |
       🎨 Asset Building Summary:
       
-      Build system: {{ vite_config_file.stat.exists | default(false) | ternary('Vite', (mix_config_file.stat.exists | default(false) | ternary('Mix', 'None detected'))) }}
+      Build system: {{ (vite_config_file is defined and vite_config_file.stat.exists) | ternary('Vite', ((mix_config_file is defined and mix_config_file.stat.exists) | ternary('Mix', 'None detected'))) }}
       Status: {{ (vite_build_result is defined and vite_build_result.changed) or (mix_build_result is defined and mix_build_result.changed) | ternary('✅ Assets compiled successfully', '⚠️ No assets to build or build failed') }}
       Environment: {{ laravel_app_env }}
       Vite version: {{ vite_version_check.stdout | default('Not available') }}
