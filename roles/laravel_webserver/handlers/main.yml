@@ -1,0 +1,50 @@
+---
+# roles/laravel_webserver/handlers/main.yml
+# Handlers for Laravel webserver configuration role
+
+- name: Reload NGINX
+  ansible.builtin.service:
+    name: "{{ nginx_service | default('nginx') }}"
+    state: reloaded
+  when: 
+    - webserver_type | default('nginx') == 'nginx'
+    - laravel_webserver_reload_service | default(true) | bool
+
+- name: Restart NGINX
+  ansible.builtin.service:
+    name: "{{ nginx_service | default('nginx') }}"
+    state: restarted
+  when: 
+    - webserver_type | default('nginx') == 'nginx'
+    - laravel_webserver_reload_service | default(true) | bool
+
+- name: Test NGINX Configuration
+  ansible.builtin.command: nginx -t
+  when: 
+    - webserver_type | default('nginx') == 'nginx'
+    - laravel_webserver_validate_config | default(true) | bool
+  changed_when: false
+
+- name: Reload Apache
+  ansible.builtin.service:
+    name: "{{ apache_service | default('apache2') }}"
+    state: reloaded
+  when: 
+    - webserver_type | default('nginx') == 'apache'
+    - laravel_webserver_reload_service | default(true) | bool
+
+- name: Restart Apache
+  ansible.builtin.service:
+    name: "{{ apache_service | default('apache2') }}"
+    state: restarted
+  when: 
+    - webserver_type | default('nginx') == 'apache'
+    - laravel_webserver_reload_service | default(true) | bool
+
+- name: Test Apache Configuration
+  ansible.builtin.command: >
+    {{ 'apache2ctl' if ansible_os_family == 'Debian' else 'httpd' }} configtest
+  when: 
+    - webserver_type | default('nginx') == 'apache'
+    - laravel_webserver_validate_config | default(true) | bool
+  changed_when: false

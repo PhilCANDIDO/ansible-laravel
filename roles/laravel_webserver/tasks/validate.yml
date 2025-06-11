@@ -1,0 +1,175 @@
+---
+# roles/laravel_webserver/tasks/validate.yml
+# Configuration validation and testing tasks
+
+- name: (validate) Test webserver configuration syntax
+  ansible.builtin.command: >
+    {{ webserver_type | default('nginx') == 'nginx' | ternary('nginx -t', 'apache2ctl configtest') }}
+  register: webserver_config_test
+  changed_when: false
+  failed_when: 
+    - webserver_config_test.rc != 0
+    - laravel_webserver_fail_on_config_error | default(true) | bool
+  tags: [validate, config]
+
+- name: (validate) Display configuration test results
+  ansible.builtin.debug:
+    msg: |
+      🧪 Webserver Configuration Test Results for {{ app_name }}:
+      
+      Server Type: {{ webserver_type | default('nginx') | title }}
+      Test Command: {{ webserver_type | default('nginx') == 'nginx' | ternary('nginx -t', 'apache2ctl configtest') }}
+      Status: {{ webserver_config_test.rc == 0 | ternary('✅ Configuration valid', '❌ Configuration error') }}
+      
+      {% if webserver_config_test.rc != 0 %}
+      Error Details:
+      {{ webserver_config_test.stderr }}
+      
+      {% if not (laravel_webserver_fail_on_config_error | default(true) | bool) %}
+      ⚠️  Configuration test failed but continuing due to laravel_webserver_fail_on_config_error: false
+      {% endif %}
+      {% else %}
+      ✅ All configuration tests passed successfully!
+      {% endif %}
+  tags: [validate, config]
+
+- name: (validate) Check if application directory structure exists
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: app_dirs_check
+  loop:
+    - "{{ webserver_laravel_root }}"
+    - "{{ webserver_public_root }}"
+    - "{{ webserver_laravel_root }}/storage"
+    - "{{ webserver_laravel_root }}/bootstrap/cache"
+  tags: [validate, directories]
+
+- name: (validate) Display directory structure validation
+  ansible.builtin.debug:
+    msg: |
+      📁 Application Directory Structure Validation for {{ app_name }}:
+      
+      {% for result in app_dirs_check.results %}
+      {{ result.item }}: {{ result.stat.exists | ternary('✅ Exists', '⚠️ Missing') }}
+      {% endfor %}
+      
+      {% if app_dirs_check.results | selectattr('stat.exists', 'equalto', false) | list | length > 0 %}
+      ⚠️  Some directories are missing. This is normal if the Laravel application hasn't been deployed yet.
+      {% endif %}
+  tags: [validate, directories]
+
+- name: (validate) Check webserver service status
+  ansible.builtin.service_facts:
+
+- name: (validate) Verify webserver is running
+  ansible.builtin.assert:
+    that: >
+      (webserver_type | default('nginx') == 'nginx' and 
+       (nginx_service | default('nginx') in ansible_facts.services or 'nginx.service' in ansible_facts.services)) or
+      (webserver_type | default('nginx') == 'apache' and 
+       (apache_service | default('apache2') in ansible_facts.services or 'apache2.service' in ansible_facts.services or 'httpd.service' in ansible_facts.services))
+    fail_msg: |
+      {{ webserver_type | default('nginx') | title }} service is not running or not found.
+      Please ensure the webserver is properly installed and running.
+    success_msg: "✅ {{ webserver_type | default('nginx') | title }} service is available"
+  tags: [validate, service]
+
+- name: (validate) Check if PHP-FPM socket exists
+  ansible.builtin.stat:
+    path: "{{ webserver_php_fpm_socket | regex_replace('unix:', '') }}"
+  register: php_fpm_socket_check
+  tags: [validate, php_fpm]
+
+- name: (validate) Display PHP-FPM socket validation
+  ansible.builtin.debug:
+    msg: |
+      🐘 PHP-FPM Socket Validation for {{ app_name }}:
+      
+      Socket Path: {{ webserver_php_fpm_socket }}
+      Socket File: {{ webserver_php_fpm_socket | regex_replace('unix:', '') }}
+      Status: {{ php_fpm_socket_check.stat.exists | ternary('✅ Socket exists', '⚠️ Socket missing') }}
+      
+      {% if not php_fpm_socket_check.stat.exists %}
+      ⚠️  PHP-FPM socket not found. This may cause issues serving PHP files.
+      Please ensure PHP-FPM is installed and running with the correct socket path.
+      {% endif %}
+  tags: [validate, php_fpm]
+
+- name: (validate) Test HTTP connectivity (if possible)
+  ansible.builtin.uri:
+    url: "http://{{ webserver_server_name }}"
+    method: HEAD
+    status_code: [200, 301, 302, 404]  # Accept various codes as "working"
+    timeout: 10
+  register: http_connectivity_test
+  failed_when: false
+  when: 
+    - laravel_webserver_test_connectivity | default(false) | bool
+    - webserver_server_name != 'localhost'
+    - webserver_server_name != '127.0.0.1'
+  tags: [validate, connectivity]
+
+- name: (validate) Test HTTPS connectivity (if SSL enabled)
+  ansible.builtin.uri:
+    url: "https://{{ webserver_server_name }}"
+    method: HEAD
+    status_code: [200, 301, 302, 404]  # Accept various codes as "working"
+    timeout: 10
+    validate_certs: false  # Don't validate certs for testing
+  register: https_connectivity_test
+  failed_when: false
+  when: 
+    - laravel_webserver_test_connectivity | default(false) | bool
+    - webserver_enable_ssl | default(false) | bool
+    - webserver_server_name != 'localhost'
+    - webserver_server_name != '127.0.0.1'
+  tags: [validate, connectivity]
+
+- name: (validate) Display connectivity test results
+  ansible.builtin.debug:
+    msg: |
+      🌐 Connectivity Test Results for {{ app_name }}:
+      
+      Domain: {{ webserver_server_name }}
+      
+      {% if http_connectivity_test is defined %}
+      HTTP Test: {{ http_connectivity_test.status is defined | ternary('✅ Responding (HTTP ' + http_connectivity_test.status|string + ')', '❌ No response') }}
+      {% endif %}
+      
+      {% if https_connectivity_test is defined %}
+      HTTPS Test: {{ https_connectivity_test.status is defined | ternary('✅ Responding (HTTP ' + https_connectivity_test.status|string + ')', '❌ No response') }}
+      {% endif %}
+      
+      {% if http_connectivity_test is not defined and https_connectivity_test is not defined %}
+      ⚠️  Connectivity testing disabled (laravel_webserver_test_connectivity: false)
+      {% endif %}
+  when: laravel_webserver_test_connectivity | default(false) | bool
+  tags: [validate, connectivity]
+
+- name: (validate) Final validation summary
+  ansible.builtin.debug:
+    msg: |
+      
+      🎯 Laravel Webserver Configuration Validation Summary for {{ app_name }}:
+      
+      ✅ Validation Results:
+      ├── Configuration Syntax: {{ webserver_config_test.rc == 0 | ternary('✅ Valid', '❌ Invalid') }}
+      ├── Webserver Service: {{ (nginx_service | default('nginx') in ansible_facts.services or apache_service | default('apache2') in ansible_facts.services or 'nginx.service' in ansible_facts.services or 'apache2.service' in ansible_facts.services or 'httpd.service' in ansible_facts.services) | ternary('✅ Running', '❌ Not found') }}
+      ├── PHP-FPM Socket: {{ php_fpm_socket_check.stat.exists | ternary('✅ Available', '⚠️ Missing') }}
+      ├── SSL Certificates: {{ (not (webserver_enable_ssl | default(false))) | ternary('N/A (SSL disabled)', (ssl_cert_file is defined and ssl_cert_file.stat.exists and ssl_key_file is defined and ssl_key_file.stat.exists) | ternary('✅ Valid', '⚠️ Issues detected')) }}
+      {% if http_connectivity_test is defined %}
+      ├── HTTP Connectivity: {{ http_connectivity_test.status is defined | ternary('✅ Responding', '❌ No response') }}
+      {% endif %}
+      {% if https_connectivity_test is defined %}
+      └── HTTPS Connectivity: {{ https_connectivity_test.status is defined | ternary('✅ Responding', '❌ No response') }}
+      {% endif %}
+      
+      📋 Configuration Details:
+      ├── Application: {{ app_name }}
+      ├── Domain: {{ webserver_server_name }}
+      ├── Webserver: {{ webserver_type | default('nginx') | title }}
+      ├── Config File: {{ (webserver_type | default('nginx') == 'nginx') | ternary(nginx_vhost_dir + '/' + app_name + '.conf', apache_vhost_dir + '/' + app_name + '.conf') }}
+      └── Document Root: {{ webserver_public_root }}
+      
+      🚀 Laravel webserver configuration for {{ app_name }} is ready!
+  tags: [validate, summary]

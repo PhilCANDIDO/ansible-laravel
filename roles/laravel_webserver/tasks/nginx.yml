@@ -1,0 +1,116 @@
+---
+# roles/laravel_webserver/tasks/nginx.yml
+# NGINX configuration tasks for Laravel applications
+
+- name: (nginx) Check if NGINX is installed and running
+  ansible.builtin.service_facts:
+
+- name: (nginx) Ensure NGINX is installed
+  ansible.builtin.fail:
+    msg: "NGINX is not installed. Please run site.yml first to install the webserver."
+  when: 
+    - nginx_service | default('nginx') not in ansible_facts.services
+    - 'nginx.service' not in ansible_facts.services
+  tags: [nginx, validation]
+
+- name: (nginx) Create NGINX application configuration directory if needed
+  ansible.builtin.file:
+    path: "{{ nginx_vhost_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags: [nginx, directories]
+
+- name: (nginx) Backup existing NGINX configuration (if exists)
+  ansible.builtin.copy:
+    src: "{{ nginx_vhost_dir }}/{{ app_name }}.conf"
+    dest: "{{ nginx_vhost_dir }}/{{ app_name }}.conf.backup.{{ ansible_date_time.epoch }}"
+    remote_src: true
+  when: 
+    - laravel_webserver_backup_config | default(true) | bool
+  failed_when: false
+  tags: [nginx, backup]
+
+- name: (nginx) Generate NGINX configuration for Laravel application
+  ansible.builtin.template:
+    src: nginx/laravel.conf.j2
+    dest: "{{ nginx_vhost_dir }}/{{ app_name }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: "{{ laravel_webserver_backup_config | default(true) | bool }}"
+  register: nginx_config_created
+  notify: 
+    - Reload NGINX
+    - Test NGINX Configuration
+  tags: [nginx, config]
+
+- name: (nginx) Enable NGINX site (Debian/Ubuntu)
+  ansible.builtin.file:
+    src: "{{ nginx_vhost_dir }}/{{ app_name }}.conf"
+    dest: "{{ nginx_enabled_vhost_dir }}/{{ app_name }}.conf"
+    state: link
+    force: true
+  when: 
+    - ansible_os_family == 'Debian'
+    - nginx_enabled_vhost_dir is defined
+    - nginx_enabled_vhost_dir != nginx_vhost_dir
+  notify: Reload NGINX
+  tags: [nginx, enable]
+
+- name: (nginx) Create application-specific log directory
+  ansible.builtin.file:
+    path: "/var/log/nginx"
+    state: directory
+    owner: root
+    group: "{{ nginx_group | default('adm') }}"
+    mode: '0755'
+  when: laravel_webserver_logging | default(true) | bool
+  tags: [nginx, logging]
+
+- name: (nginx) Set up log rotation for application logs
+  ansible.builtin.template:
+    src: logrotate/nginx-app.j2
+    dest: "/etc/logrotate.d/nginx-{{ app_name }}"
+    owner: root
+    group: root
+    mode: '0644'
+  when: laravel_webserver_logging | default(true) | bool
+  tags: [nginx, logging]
+
+- name: (nginx) Configure rate limiting (if enabled)
+  ansible.builtin.blockinfile:
+    path: "/etc/nginx/conf.d/{{ app_name }}-rate-limit.conf"
+    block: |
+      # Rate limiting for {{ app_name }}
+      limit_req_zone $binary_remote_addr zone={{ app_name }}_limit:{{ laravel_webserver_rate_zone_size | default('10m') }} rate={{ laravel_webserver_rate_limit | default('10r/s') }};
+    marker: "# {mark} ANSIBLE MANAGED RATE LIMITING FOR {{ app_name | upper }}"
+    create: true
+    owner: root
+    group: root
+    mode: '0644'
+  when: laravel_webserver_rate_limiting | default(false) | bool
+  notify: Reload NGINX
+  tags: [nginx, rate_limiting]
+
+- name: (nginx) Display NGINX configuration summary
+  ansible.builtin.debug:
+    msg: |
+      🌐 NGINX Configuration Summary for {{ app_name }}:
+      
+      ├── Config file: {{ nginx_vhost_dir }}/{{ app_name }}.conf
+      {% if ansible_os_family == 'Debian' and nginx_enabled_vhost_dir != nginx_vhost_dir %}
+      ├── Enabled: {{ nginx_enabled_vhost_dir }}/{{ app_name }}.conf
+      {% endif %}
+      ├── Domain: {{ webserver_server_name }}
+      {% if webserver_server_aliases | default([]) | length > 0 %}
+      ├── Aliases: {{ webserver_server_aliases | join(', ') }}
+      {% endif %}
+      ├── Document Root: {{ webserver_public_root }}
+      ├── SSL: {{ webserver_enable_ssl | default(false) | ternary('Enabled', 'Disabled') }}
+      {% if laravel_webserver_rate_limiting | default(false) | bool %}
+      ├── Rate Limiting: {{ laravel_webserver_rate_limit | default('10r/s') }} (burst: {{ laravel_webserver_rate_burst | default('20') }})
+      {% endif %}
+      └── Status: {{ nginx_config_created.changed | ternary('Configuration updated', 'Configuration unchanged') }}
+  tags: [nginx, summary]

@@ -1,0 +1,145 @@
+---
+# roles/laravel_webserver/tasks/apache.yml
+# Apache configuration tasks for Laravel applications
+
+- name: (apache) Check if Apache is installed and running
+  ansible.builtin.service_facts:
+
+- name: (apache) Ensure Apache is installed
+  ansible.builtin.fail:
+    msg: "Apache is not installed. Please run site.yml first to install the webserver."
+  when: 
+    - apache_service | default('apache2') not in ansible_facts.services
+    - 'apache2.service' not in ansible_facts.services
+    - 'httpd.service' not in ansible_facts.services
+  tags: [apache, validation]
+
+- name: (apache) Create Apache application configuration directory if needed
+  ansible.builtin.file:
+    path: "{{ apache_vhost_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  tags: [apache, directories]
+
+- name: (apache) Backup existing Apache configuration (if exists)
+  ansible.builtin.copy:
+    src: "{{ apache_vhost_dir }}/{{ app_name }}.conf"
+    dest: "{{ apache_vhost_dir }}/{{ app_name }}.conf.backup.{{ ansible_date_time.epoch }}"
+    remote_src: true
+  when: 
+    - laravel_webserver_backup_config | default(true) | bool
+  failed_when: false
+  tags: [apache, backup]
+
+- name: (apache) Generate Apache configuration for Laravel application
+  ansible.builtin.template:
+    src: apache/laravel.conf.j2
+    dest: "{{ apache_vhost_dir }}/{{ app_name }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+    backup: "{{ laravel_webserver_backup_config | default(true) | bool }}"
+  register: apache_config_created
+  notify: 
+    - Reload Apache
+    - Test Apache Configuration
+  tags: [apache, config]
+
+- name: (apache) Enable Apache site (Debian/Ubuntu)
+  ansible.builtin.command: "a2ensite {{ app_name }}.conf"
+  args:
+    creates: "{{ apache_enabled_vhost_dir }}/{{ app_name }}.conf"
+  when: 
+    - ansible_os_family == 'Debian'
+    - apache_enabled_vhost_dir is defined
+  notify: Reload Apache
+  register: apache_site_enabled
+  changed_when: "'Site {{ app_name }} already enabled' not in apache_site_enabled.stdout"
+  tags: [apache, enable]
+
+- name: (apache) Enable required Apache modules
+  community.general.apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - rewrite
+    - headers
+    - proxy
+    - proxy_fcgi
+    - ssl
+  when: ansible_os_family == 'Debian'
+  notify: Reload Apache
+  tags: [apache, modules]
+
+- name: (apache) Create application-specific log directory
+  ansible.builtin.file:
+    path: "/var/log/{{ apache_service | default('apache2') }}"
+    state: directory
+    owner: root
+    group: "{{ apache_group | default('adm') }}"
+    mode: '0755'
+  when: laravel_webserver_logging | default(true) | bool
+  tags: [apache, logging]
+
+- name: (apache) Set up log rotation for application logs
+  ansible.builtin.template:
+    src: logrotate/apache-app.j2
+    dest: "/etc/logrotate.d/apache2-{{ app_name }}"
+    owner: root
+    group: root
+    mode: '0644'
+  when: laravel_webserver_logging | default(true) | bool
+  tags: [apache, logging]
+
+- name: (apache) Configure connection limiting (if enabled and mod_limitipconn available)
+  ansible.builtin.blockinfile:
+    path: "{{ apache_vhost_dir }}/{{ app_name }}-limitconn.conf"
+    block: |
+      # Connection limiting for {{ app_name }}
+      <IfModule mod_limitipconn.c>
+          <Location />
+              MaxConnPerIP {{ laravel_webserver_max_conn_per_ip | default('10') }}
+          </Location>
+      </IfModule>
+    marker: "# {mark} ANSIBLE MANAGED CONNECTION LIMITING FOR {{ app_name | upper }}"
+    create: true
+    owner: root
+    group: root
+    mode: '0644'
+  when: laravel_webserver_connection_limiting | default(false) | bool
+  notify: Reload Apache
+  tags: [apache, connection_limiting]
+
+- name: (apache) Include connection limiting configuration in main vhost
+  ansible.builtin.lineinfile:
+    path: "{{ apache_vhost_dir }}/{{ app_name }}.conf"
+    line: "    Include {{ apache_vhost_dir }}/{{ app_name }}-limitconn.conf"
+    insertafter: "DocumentRoot {{ webserver_public_root }}"
+  when: 
+    - laravel_webserver_connection_limiting | default(false) | bool
+    - apache_config_created is changed
+  notify: Reload Apache
+  tags: [apache, connection_limiting]
+
+- name: (apache) Display Apache configuration summary
+  ansible.builtin.debug:
+    msg: |
+      🌐 Apache Configuration Summary for {{ app_name }}:
+      
+      ├── Config file: {{ apache_vhost_dir }}/{{ app_name }}.conf
+      {% if ansible_os_family == 'Debian' %}
+      ├── Enabled: {{ apache_site_enabled is defined and apache_site_enabled.changed | ternary('✅ Site enabled', '✅ Already enabled') }}
+      {% endif %}
+      ├── Domain: {{ webserver_server_name }}
+      {% if webserver_server_aliases | default([]) | length > 0 %}
+      ├── Aliases: {{ webserver_server_aliases | join(', ') }}
+      {% endif %}
+      ├── Document Root: {{ webserver_public_root }}
+      ├── SSL: {{ webserver_enable_ssl | default(false) | ternary('Enabled', 'Disabled') }}
+      {% if laravel_webserver_connection_limiting | default(false) | bool %}
+      ├── Connection Limiting: {{ laravel_webserver_max_conn_per_ip | default('10') }} per IP
+      {% endif %}
+      └── Status: {{ apache_config_created.changed | ternary('Configuration updated', 'Configuration unchanged') }}
+  tags: [apache, summary]

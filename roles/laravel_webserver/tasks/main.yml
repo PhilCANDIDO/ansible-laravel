@@ -1,0 +1,71 @@
+---
+# roles/laravel_webserver/tasks/main.yml
+# Main tasks file for Laravel webserver configuration role
+
+- name: (main) Load distribution-specific variables
+  ansible.builtin.include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution | lower }}.yml"
+    - "{{ ansible_os_family | lower }}.yml"
+    - "default.yml"
+  tags: [laravel_webserver, config]
+
+- name: (main) Validate required variables
+  ansible.builtin.assert:
+    that:
+      - app_name is defined
+      - webserver_server_name is defined
+      - webserver_laravel_root is defined
+      - webserver_public_root is defined
+    fail_msg: |
+      Required variables missing for Laravel webserver configuration:
+      - app_name: Application name
+      - webserver_server_name: Domain name
+      - webserver_laravel_root: Laravel root directory
+      - webserver_public_root: Laravel public directory
+    success_msg: "✅ Required variables validated for {{ app_name }}"
+  tags: [laravel_webserver, validation]
+
+- name: (main) Display Laravel webserver configuration info
+  ansible.builtin.debug:
+    msg: |
+      🌐 Laravel Webserver Configuration
+      
+      Application: {{ app_name }}
+      Server Type: {{ webserver_type | default('nginx') | title }}
+      Domain: {{ webserver_server_name }}
+      Root: {{ webserver_laravel_root }}
+      Public: {{ webserver_public_root }}
+      SSL: {{ webserver_enable_ssl | default(false) | ternary('Enabled', 'Disabled') }}
+  tags: [laravel_webserver, info]
+
+- name: (main) Include SSL validation tasks
+  ansible.builtin.include_tasks: ssl_validation.yml
+  when: webserver_enable_ssl | default(false) | bool
+  tags: [laravel_webserver, ssl]
+
+- name: (main) Include NGINX configuration tasks
+  ansible.builtin.include_tasks: nginx.yml
+  when: webserver_type | default('nginx') == 'nginx'
+  tags: [laravel_webserver, nginx]
+
+- name: (main) Include Apache configuration tasks
+  ansible.builtin.include_tasks: apache.yml
+  when: webserver_type | default('nginx') == 'apache'
+  tags: [laravel_webserver, apache]
+
+- name: (main) Include security configuration tasks
+  ansible.builtin.include_tasks: security.yml
+  when: laravel_webserver_security | default(true) | bool
+  tags: [laravel_webserver, security]
+
+- name: (main) Include firewall configuration tasks
+  ansible.builtin.include_tasks: firewall.yml
+  when: laravel_webserver_firewall | default(false) | bool
+  tags: [laravel_webserver, firewall]
+
+- name: (main) Include validation and testing tasks
+  ansible.builtin.include_tasks: validate.yml
+  tags: [laravel_webserver, validate]

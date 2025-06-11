@@ -1,0 +1,24 @@
+---
+# roles/laravel_webserver/vars/debian.yml
+# Variables for Laravel webserver configuration on Debian-based systems
+
+# NGINX paths and services
+nginx_service: "nginx"
+nginx_user: "www-data"
+nginx_group: "www-data"
+nginx_vhost_dir: "/etc/nginx/sites-available"
+nginx_enabled_vhost_dir: "/etc/nginx/sites-enabled"
+
+# Apache paths and services  
+apache_service: "apache2"
+apache_user: "www-data"
+apache_group: "www-data"
+apache_vhost_dir: "/etc/apache2/sites-available"
+apache_enabled_vhost_dir: "/etc/apache2/sites-enabled"
+
+# Log directories
+laravel_webserver_log_dir: "/var/log/{{ webserver_type | default('nginx') }}"
+
+# Service management commands
+webserver_config_test_command: "{{ webserver_type | default('nginx') == 'nginx' | ternary('nginx -t', 'apache2ctl configtest') }}"
+webserver_reload_command: "systemctl reload {{ webserver_type | default('nginx') == 'nginx' | ternary(nginx_service, apache_service) }}"

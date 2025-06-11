@@ -1,5 +1,8 @@
 ---
-- name: Deploy Laravel Application with SSL Support
+# Deploy a Laravel application to servers using modular roles
+# Supports application-specific variable files with automatic webserver configuration
+
+- name: Deploy Laravel Application with Automatic Webserver Configuration
   hosts: all
   become: true
   
@@ -49,23 +52,19 @@
           - app_repo_branch: Git branch to deploy
         success_msg: "✅ Required application variables validated"
 
-    - name: 🚀 Display deployment information including SSL
+    - name: 🚀 Display deployment information
       ansible.builtin.debug:
         msg: |
-          🚀 Starting Laravel application deployment with SSL support
+          🚀 Starting Laravel application deployment with automatic webserver configuration
           📱 Application: {{ app_name }}
           📊 Repository: {{ app_repo_url }}
           🌿 Branch: {{ app_repo_branch }}
           📁 Deploy directory: {{ webserver_laravel_root }}
+          🌐 Domain: {{ webserver_server_name }}
+          🔧 Webserver: {{ webserver_type | default('nginx') }}
           👤 Webserver user: {{ webserver_user }}
           🌐 Environment: {{ laravel_app_env | default('production') }}
           🌍 URL: {{ laravel_app_url }}
-          🔐 SSL enabled: {{ webserver_enable_ssl | default(false) | ternary('✅ Yes', '❌ No') }}
-          {% if webserver_enable_ssl | default(false) %}
-          🔗 HTTPS URL: https://{{ webserver_server_name }}
-          📧 SSL email: {{ certbot_email | default('Not configured') }}
-          🎯 SSL method: {{ certbot_challenge_method | default('webroot') }}
-          {% endif %}
           {% if laravel_telescope_install | default(false) | bool %}
           🔭 Telescope: {{ laravel_telescope_install | ternary('Will be installed', 'Skipped') }}
           {% endif %}
@@ -94,10 +93,9 @@
     - role: laravel_deploy
       tags: [deploy, laravel]
     
-    # SSL certificate generation and configuration (AFTER application deployment)
-    - role: certbot
-      when: webserver_enable_ssl | default(false) | bool
-      tags: [deploy, ssl, certbot]
+    # Laravel webserver configuration role (NEW)
+    - role: laravel_webserver
+      tags: [deploy, webserver, configuration]
     
     # Optional Telescope installation and configuration
     - role: laravel_telescope
@@ -106,47 +104,51 @@
 
   # Post-deployment tasks
   post_tasks:
-    - name: 🎊 Final deployment summary with SSL status
+    - name: 🎊 Final deployment summary
       ansible.builtin.debug:
         msg: |
           
-          🎊 Laravel Deployment Complete!
+          🎊 Laravel Application Deployment Complete!
           
           📋 Summary:
           ├── Application: {{ app_name }} ✅
           ├── Environment: {{ laravel_app_env | default('production') }} ✅
-          ├── HTTP URL: {{ laravel_app_url }} ✅
-          {% if webserver_enable_ssl | default(false) %}
-          ├── HTTPS URL: https://{{ webserver_server_name }} ✅
-          ├── SSL Certificate: {{ certbot_primary_domain | default(webserver_server_name) }} ✅
-          ├── SSL Auto-renewal: {{ certbot_auto_renew | default(true) | ternary('✅ Enabled', '❌ Manual') }}
-          {% endif %}
+          ├── Domain: {{ webserver_server_name }} ✅
+          ├── URL: {{ laravel_app_url }} ✅
           ├── Path: {{ webserver_laravel_root }} ✅
+          ├── Webserver: {{ webserver_type | default('nginx') | title }} ✅
+          ├── Webserver Config: ✅ Automatically configured
+          {% if webserver_enable_ssl | default(false) | bool %}
+          ├── SSL/HTTPS: {{ ssl_cert_file.stat.exists | default(false) and ssl_key_file.stat.exists | default(false) | ternary('✅ Configured', '⚠️ Check certificates') }}
+          {% else %}
+          ├── SSL/HTTPS: ⚠️ Disabled (HTTP only)
+          {% endif %}
           {% if laravel_telescope_install | default(false) | bool %}
           ├── Telescope: Installed {% if laravel_telescope_production_enabled | default(false) %}(Production enabled){% else %}(Dev only){% endif %} ✅
           {% endif %}
           └── Deployment: {{ ansible_date_time.iso8601 }} ✅
           
-          🌐 Your {{ app_name }} application is ready{% if webserver_enable_ssl | default(false) %} with HTTPS{% endif %}!
+          🌐 Your {{ app_name }} application is ready and fully configured!
           
           📚 Next Steps:
-          {% if webserver_enable_ssl | default(false) %}
-          - Test HTTP redirect: http://{{ webserver_server_name }}
-          - Test HTTPS: https://{{ webserver_server_name }}
-          - Verify SSL: https://www.ssllabs.com/ssltest/analyze.html?d={{ webserver_server_name }}
-          {% else %}
           - Test your application: {{ laravel_app_url }}
-          - Consider enabling SSL with webserver_enable_ssl: true
+          {% if webserver_enable_ssl | default(false) | bool and not (ssl_cert_file.stat.exists | default(false) and ssl_key_file.stat.exists | default(false)) %}
+          - ⚠️ Configure SSL certificates for HTTPS access
           {% endif %}
           {% if laravel_telescope_install | default(false) | bool and (laravel_telescope_production_enabled | default(false) | bool or laravel_app_env != 'production') %}
           - Access Telescope: {{ laravel_app_url }}/{{ laravel_telescope_path | default('telescope') }}
           {% endif %}
           - Monitor logs: {{ webserver_laravel_root }}/storage/logs/
-          - Check queue workers if using queues
-          - Schedule regular backups
+          - Check webserver status: systemctl status {{ webserver_type | default('nginx') }}
+          - Verify webserver config: {{ webserver_type | default('nginx') == 'nginx' | ternary('nginx -t', 'apache2ctl configtest') }}
+          
+          🔧 Webserver Configuration:
+          ├── Config file: {{ (webserver_type | default('nginx') == 'nginx') | ternary('/etc/nginx/sites-available/' + app_name + '.conf', '/etc/apache2/sites-available/' + app_name + '.conf') }}
+          ├── Access log: /var/log/{{ webserver_type | default('nginx') }}/{{ app_name }}-access.log
+          └── Error log: /var/log/{{ webserver_type | default('nginx') }}/{{ app_name }}-error.log
       tags: [always]
 
-  # Handlers for deployment
+  # Enhanced handlers for deployment with webserver management
   handlers:
     - name: Restart PHP-FPM
       ansible.builtin.service:
@@ -154,10 +156,39 @@
         state: restarted
       when: php_version is defined
 
-    - name: Reload Web Server
+    - name: Restart NGINX
       ansible.builtin.service:
-        name: "{{ webserver_type | default('nginx') == 'nginx' | ternary(nginx_service | default('nginx'), apache_service | default('apache2')) }}"
+        name: "{{ nginx_service | default('nginx') }}"
+        state: restarted
+      when: webserver_type | default('nginx') == 'nginx'
+
+    - name: Restart Apache
+      ansible.builtin.service:
+        name: "{{ apache_service | default('apache2') }}"
+        state: restarted
+      when: webserver_type | default('nginx') == 'apache'
+
+    - name: Reload NGINX
+      ansible.builtin.service:
+        name: "{{ nginx_service | default('nginx') }}"
         state: reloaded
+      when: webserver_type | default('nginx') == 'nginx'
+
+    - name: Reload Apache
+      ansible.builtin.service:
+        name: "{{ apache_service | default('apache2') }}"
+        state: reloaded
+      when: webserver_type | default('nginx') == 'apache'
+
+    - name: Test NGINX Configuration
+      ansible.builtin.command: nginx -t
+      when: webserver_type | default('nginx') == 'nginx'
+      changed_when: false
+
+    - name: Test Apache Configuration
+      ansible.builtin.command: apache2ctl configtest
+      when: webserver_type | default('nginx') == 'apache'
+      changed_when: false
 
     - name: Clear Laravel Caches
       ansible.builtin.command:
