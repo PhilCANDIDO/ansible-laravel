@@ -1,0 +1,159 @@
+---
+# roles/laravel_webserver/tasks/firewall.yml
+# Firewall configuration tasks for Laravel webserver
+
+- name: (firewall) Check if UFW is installed
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: (firewall) Install UFW if not present
+  ansible.builtin.package:
+    name: ufw
+    state: present
+  when: 
+    - "'ufw' not in ansible_facts.packages"
+    - laravel_webserver_firewall_install | default(true) | bool
+  tags: [firewall, install]
+
+- name: (firewall) Enable UFW firewall
+  community.general.ufw:
+    state: enabled
+    policy: deny
+    direction: incoming
+    logging: "on"
+  when: laravel_webserver_firewall_enable | default(true) | bool
+  tags: [firewall, enable]
+
+- name: (firewall) Allow SSH (port 22) before applying rules
+  community.general.ufw:
+    rule: allow
+    port: '22'
+    proto: tcp
+    comment: "SSH access"
+  when: laravel_webserver_firewall_enable | default(true) | bool
+  tags: [firewall, ssh]
+
+- name: (firewall) Allow HTTP traffic for Laravel application
+  community.general.ufw:
+    rule: allow
+    port: '80'
+    proto: tcp
+    comment: "{{ app_name }} HTTP"
+  when: laravel_webserver_firewall_enable | default(true) | bool
+  tags: [firewall, http]
+
+- name: (firewall) Allow HTTPS traffic for Laravel application
+  community.general.ufw:
+    rule: allow
+    port: '443'
+    proto: tcp
+    comment: "{{ app_name }} HTTPS"
+  when: 
+    - laravel_webserver_firewall_enable | default(true) | bool
+    - webserver_enable_ssl | default(false) | bool
+  tags: [firewall, https]
+
+- name: (firewall) Allow custom ports for Laravel application
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto | default('tcp') }}"
+    comment: "{{ app_name }} {{ item.comment | default('custom') }}"
+  loop: "{{ laravel_webserver_firewall_custom_ports | default([]) }}"
+  when: laravel_webserver_firewall_enable | default(true) | bool
+  tags: [firewall, custom]
+
+- name: (firewall) Configure application-specific IP restrictions
+  community.general.ufw:
+    rule: "{{ item.rule | default('allow') }}"
+    port: "{{ item.port | default('80,443') }}"
+    proto: "{{ item.proto | default('tcp') }}"
+    from_ip: "{{ item.from_ip }}"
+    comment: "{{ app_name }} {{ item.comment | default('IP restriction') }}"
+  loop: "{{ laravel_webserver_firewall_ip_restrictions | default([]) }}"
+  when: laravel_webserver_firewall_enable | default(true) | bool
+  tags: [firewall, ip_restrictions]
+
+- name: (firewall) Block access to sensitive ports
+  community.general.ufw:
+    rule: deny
+    port: "{{ item }}"
+    proto: tcp
+    comment: "Block {{ item }} for security"
+  loop: "{{ laravel_webserver_firewall_blocked_ports | default(['3306', '5432', '6379', '27017']) }}"
+  when: 
+    - laravel_webserver_firewall_enable | default(true) | bool
+    - laravel_webserver_firewall_block_db_ports | default(true) | bool
+  tags: [firewall, security]
+
+- name: (firewall) Configure rate limiting rules (if iptables-persistent is available)
+  ansible.builtin.blockinfile:
+    path: "/etc/ufw/before.rules"
+    marker: "# {mark} RATE LIMITING FOR {{ app_name | upper }}"
+    insertbefore: "^COMMIT"
+    block: |
+      # Rate limiting for {{ app_name }}
+      -A ufw-before-input -p tcp --dport 80 -m conntrack --ctstate NEW -m recent --set --name {{ app_name }}_http
+      -A ufw-before-input -p tcp --dport 80 -m conntrack --ctstate NEW -m recent --update --seconds 60 --hitcount {{ laravel_webserver_firewall_rate_limit | default('20') }} --name {{ app_name }}_http -j DROP
+      {% if webserver_enable_ssl | default(false) | bool %}
+      -A ufw-before-input -p tcp --dport 443 -m conntrack --ctstate NEW -m recent --set --name {{ app_name }}_https
+      -A ufw-before-input -p tcp --dport 443 -m conntrack --ctstate NEW -m recent --update --seconds 60 --hitcount {{ laravel_webserver_firewall_rate_limit | default('20') }} --name {{ app_name }}_https -j DROP
+      {% endif %}
+  when: 
+    - laravel_webserver_firewall_enable | default(true) | bool
+    - laravel_webserver_firewall_rate_limiting | default(false) | bool
+  notify: Reload UFW
+  tags: [firewall, rate_limiting]
+
+- name: (firewall) Get UFW status
+  ansible.builtin.command: ufw status verbose
+  register: ufw_status
+  changed_when: false
+  when: laravel_webserver_firewall_enable | default(true) | bool
+  tags: [firewall, status]
+
+- name: (firewall) Display firewall configuration summary
+  ansible.builtin.debug:
+    msg: |
+      🔥 Firewall Configuration for {{ app_name }}:
+      
+      ✅ UFW Status: {{ laravel_webserver_firewall_enable | default(true) | ternary('Enabled', 'Disabled') }}
+      
+      {% if laravel_webserver_firewall_enable | default(true) | bool %}
+      📋 Allowed Ports:
+      ├── SSH (22): ✅ Enabled
+      ├── HTTP (80): ✅ Enabled
+      {% if webserver_enable_ssl | default(false) | bool %}
+      ├── HTTPS (443): ✅ Enabled
+      {% endif %}
+      {% for port in laravel_webserver_firewall_custom_ports | default([]) %}
+      ├── Custom ({{ port.port }}): ✅ {{ port.comment | default('Custom port') }}
+      {% endfor %}
+      {% if laravel_webserver_firewall_blocked_ports | default([]) | length > 0 and laravel_webserver_firewall_block_db_ports | default(true) | bool %}
+      
+      🚫 Blocked Ports (Security):
+      {% for port in laravel_webserver_firewall_blocked_ports | default([]) %}
+      ├── {{ port }}: ❌ Blocked
+      {% endfor %}
+      {% endif %}
+      
+      {% if laravel_webserver_firewall_ip_restrictions | default([]) | length > 0 %}
+      🎯 IP Restrictions:
+      {% for restriction in laravel_webserver_firewall_ip_restrictions %}
+      ├── {{ restriction.from_ip }}: {{ restriction.rule | default('allow') | title }} {{ restriction.port | default('80,443') }}
+      {% endfor %}
+      {% endif %}
+      
+      {% if laravel_webserver_firewall_rate_limiting | default(false) | bool %}
+      ⏱️ Rate Limiting: ✅ {{ laravel_webserver_firewall_rate_limit | default('20') }} connections per minute
+      {% endif %}
+      
+      📊 Current UFW Rules:
+      {{ ufw_status.stdout if ufw_status is defined else 'Status unavailable' }}
+      {% endif %}
+      
+      💡 Firewall Management:
+      - Check status: sudo ufw status verbose
+      - Reload rules: sudo ufw reload
+      - Disable temporarily: sudo ufw disable
+  tags: [firewall, summary]

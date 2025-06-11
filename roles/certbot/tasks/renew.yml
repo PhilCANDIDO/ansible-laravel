@@ -1,0 +1,116 @@
+---
+# roles/certbot/tasks/renew.yml
+# SSL certificate automatic renewal configuration
+
+- name: (renew) Create renewal configuration
+  ansible.builtin.template:
+    src: renewal.conf.j2
+    dest: "{{ certbot_config_dir }}/renewal/{{ certbot_primary_domain }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  tags: [certbot, renew, config]
+
+- name: (renew) Create renewal script
+  ansible.builtin.template:
+    src: certbot-renew.sh.j2
+    dest: /usr/local/bin/certbot-renew.sh
+    owner: root
+    group: root
+    mode: '0755'
+  tags: [certbot, renew, script]
+
+- name: (renew) Configure automatic renewal cron job
+  ansible.builtin.cron:
+    name: "Certbot SSL certificate renewal"
+    cron_file: certbot-renewal
+    minute: "{{ certbot_auto_renew_minute }}"
+    hour: "{{ certbot_auto_renew_hour }}"
+    user: "{{ certbot_auto_renew_user }}"
+    job: "/usr/local/bin/certbot-renew.sh"
+    state: present
+  tags: [certbot, renew, cron]
+
+- name: (renew) Create systemd timer for renewal (alternative to cron)
+  block:
+    - name: (renew) Create certbot renewal service
+      ansible.builtin.template:
+        src: certbot-renew.service.j2
+        dest: /etc/systemd/system/certbot-renew.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: (renew) Create certbot renewal timer
+      ansible.builtin.template:
+        src: certbot-renew.timer.j2
+        dest: /etc/systemd/system/certbot-renew.timer
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: (renew) Enable and start certbot renewal timer
+      ansible.builtin.systemd:
+        name: certbot-renew.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+  when: ansible_service_mgr == 'systemd' and certbot_use_systemd_timer | default(false)
+  tags: [certbot, renew, systemd]
+
+- name: (renew) Test certificate renewal (dry run)
+  ansible.builtin.command: certbot renew --dry-run
+  register: certbot_renewal_test
+  changed_when: false
+  failed_when: false
+  tags: [certbot, renew, test]
+
+- name: (renew) Create post-renewal hook script
+  ansible.builtin.template:
+    src: post-renewal-hook.sh.j2
+    dest: /etc/letsencrypt/renewal-hooks/post/laravel-ssl.sh
+    owner: root
+    group: root
+    mode: '0755'
+  tags: [certbot, renew, hooks]
+
+- name: (renew) Display renewal configuration
+  ansible.builtin.debug:
+    msg: |
+      🔄 SSL Certificate Renewal Configuration:
+      
+      📅 Schedule:
+      ├── Method: {{ 'Systemd Timer' if (ansible_service_mgr == 'systemd' and certbot_use_systemd_timer | default(false)) else 'Cron Job' }}
+      ├── Time: Daily at {{ certbot_auto_renew_hour }}:{{ '%02d' | format(certbot_auto_renew_minute | int) }}
+      ├── User: {{ certbot_auto_renew_user }}
+      └── Script: /usr/local/bin/certbot-renew.sh
+      
+      🧪 Test Results:
+      └── Dry run: {{ certbot_renewal_test.rc == 0 | ternary('✅ Success', '⚠️ Failed - check configuration') }}
+      
+      🔧 Hooks:
+      ├── Pre-hook: {{ certbot_pre_hook if certbot_pre_hook else 'None' }}
+      ├── Post-hook: {{ certbot_post_hook if certbot_post_hook else 'None' }}
+      └── Deploy-hook: {{ certbot_deploy_hook if certbot_deploy_hook else 'None' }}
+      
+      💡 Certificates will be automatically renewed when they have 30 days or less remaining.
+  tags: [certbot, renew, summary]
+
+- name: (renew) Warning if renewal test failed
+  ansible.builtin.debug:
+    msg: |
+      ⚠️  WARNING: Certificate renewal test failed!
+      
+      This might indicate:
+      - Network connectivity issues
+      - DNS configuration problems
+      - Rate limiting
+      - Webserver configuration issues
+      
+      Please check manually:
+      sudo certbot renew --dry-run
+      
+      Logs: {{ certbot_logs_dir }}
+  when: certbot_renewal_test.rc != 0
+  tags: [certbot, renew, warning]
+  

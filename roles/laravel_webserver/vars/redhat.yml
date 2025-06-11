@@ -1,0 +1,24 @@
+---
+# roles/laravel_webserver/vars/redhat.yml
+# Variables for Laravel webserver configuration on RHEL-based systems
+
+# NGINX paths and services
+nginx_service: "nginx"
+nginx_user: "nginx"
+nginx_group: "nginx"
+nginx_vhost_dir: "/etc/nginx/conf.d"
+nginx_enabled_vhost_dir: "/etc/nginx/conf.d"  # Same as vhost_dir on RHEL
+
+# Apache paths and services
+apache_service: "httpd"
+apache_user: "apache"
+apache_group: "apache"
+apache_vhost_dir: "/etc/httpd/conf.d"
+apache_enabled_vhost_dir: "/etc/httpd/conf.d"  # Same as vhost_dir on RHEL
+
+# Log directories
+laravel_webserver_log_dir: "/var/log/{{ webserver_type | default('nginx') }}"
+
+# Service management commands
+webserver_config_test_command: "{{ webserver_type | default('nginx') == 'nginx' | ternary('nginx -t', 'httpd -t') }}"
+webserver_reload_command: "systemctl reload {{ webserver_type | default('nginx') == 'nginx' | ternary(nginx_service, apache_service) }}"

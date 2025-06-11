@@ -1,0 +1,51 @@
+---
+# roles/certbot/tasks/configure_webserver.yml
+# Webserver SSL configuration tasks
+
+- name: (configure_webserver) Include NGINX SSL configuration
+  ansible.builtin.include_tasks: configure_nginx.yml
+  when: webserver_type | default('nginx') == 'nginx'
+  tags: [certbot, webserver, nginx]
+
+- name: (configure_webserver) Include Apache SSL configuration
+  ansible.builtin.include_tasks: configure_apache.yml
+  when: webserver_type | default('nginx') == 'apache'
+  tags: [certbot, webserver, apache]
+
+- name: (configure_webserver) Test webserver configuration
+  ansible.builtin.command: >
+    {{
+      'nginx -t' if webserver_type | default('nginx') == 'nginx'
+      else 'apache2ctl configtest' if ansible_os_family == 'Debian'
+      else 'httpd -t'
+    }}
+  register: webserver_config_test
+  changed_when: false
+  failed_when: webserver_config_test.rc != 0
+  tags: [certbot, webserver, test]
+
+- name: (configure_webserver) Reload webserver configuration
+  ansible.builtin.service:
+    name: "{{ webserver_type | default('nginx') }}"
+    state: reloaded
+  when: webserver_config_test.rc == 0
+  tags: [certbot, webserver, reload]
+
+- name: (configure_webserver) Display webserver configuration status
+  ansible.builtin.debug:
+    msg: |
+      🌐 Webserver SSL Configuration:
+      
+      ├── Webserver: {{ webserver_type | default('nginx') | title }}
+      ├── Configuration test: {{ webserver_config_test.rc == 0 | ternary('✅ Passed', '❌ Failed') }}
+      ├── SSL enabled: ✅ Yes
+      ├── HTTPS redirect: ✅ Enabled
+      ├── HSTS: ✅ Enabled ({{ certbot_hsts_max_age // 86400 }} days)
+      └── Security headers: ✅ Configured
+      
+      🎉 Your Laravel application is now accessible via HTTPS!
+      
+      🔗 Test URLs:
+      ├── HTTP (redirects): http://{{ certbot_primary_domain }}
+      └── HTTPS: https://{{ certbot_primary_domain }}
+  tags: [certbot, webserver, summary]

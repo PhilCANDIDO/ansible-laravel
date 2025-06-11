@@ -1,0 +1,19 @@
+## roles/certbot/templates/certbot-renew.service.j2
+[Unit]
+Description=Certbot SSL Certificate Renewal
+Documentation=https://certbot.eff.org/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/certbot-renew.sh
+User={{ certbot_auto_renew_user }}
+Group={{ certbot_auto_renew_user }}
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ certbot_config_dir }} {{ certbot_logs_dir }} {{ certbot_backup_dir }}

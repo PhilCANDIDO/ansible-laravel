@@ -1,0 +1,65 @@
+---
+# roles/certbot/handlers/main.yml
+# Handlers for Certbot SSL role
+
+- name: Restart webserver
+  ansible.builtin.service:
+    name: "{{ webserver_type | default('nginx') }}"
+    state: restarted
+  when: webserver_type is defined
+
+- name: Reload webserver
+  ansible.builtin.service:
+    name: "{{ webserver_type | default('nginx') }}"
+    state: reloaded
+  when: webserver_type is defined
+
+- name: Restart NGINX
+  ansible.builtin.service:
+    name: nginx
+    state: restarted
+
+- name: Reload NGINX
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+
+- name: Restart Apache
+  ansible.builtin.service:
+    name: "{{ 'apache2' if ansible_os_family == 'Debian' else 'httpd' }}"
+    state: restarted
+
+- name: Reload Apache
+  ansible.builtin.service:
+    name: "{{ 'apache2' if ansible_os_family == 'Debian' else 'httpd' }}"
+    state: reloaded
+
+- name: Backup SSL certificates
+  ansible.builtin.copy:
+    src: "{{ certbot_config_dir }}/live/{{ certbot_primary_domain }}/"
+    dest: "{{ certbot_backup_dir }}/{{ certbot_primary_domain }}-{{ ansible_date_time.epoch }}/"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: 
+    - certbot_backup_certificates | bool
+    - certbot_primary_domain is defined
+
+- name: Clean old SSL backups
+  ansible.builtin.find:
+    paths: "{{ certbot_backup_dir }}"
+    patterns: "{{ certbot_primary_domain }}-*"
+    file_type: directory
+    age: "{{ certbot_backup_retention_days }}d"
+  register: old_ssl_backups
+  changed_when: false
+
+- name: Remove old SSL backups
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ old_ssl_backups.files }}"
+  when: 
+    - certbot_backup_certificates | bool
+    - old_ssl_backups.files is defined

@@ -1,0 +1,172 @@
+---
+# roles/laravel_webserver/tasks/ssl_validation.yml
+# SSL certificate validation tasks
+
+- name: (ssl) Check if SSL certificate file exists
+  ansible.builtin.stat:
+    path: "{{ webserver_ssl_certificate }}"
+  register: ssl_cert_file
+  when: webserver_ssl_certificate is defined and webserver_ssl_certificate != ''
+  tags: [ssl, validation]
+
+- name: (ssl) Check if SSL private key file exists
+  ansible.builtin.stat:
+    path: "{{ webserver_ssl_certificate_key }}"
+  register: ssl_key_file
+  when: webserver_ssl_certificate_key is defined and webserver_ssl_certificate_key != ''
+  tags: [ssl, validation]
+
+- name: (ssl) Validate SSL certificate file permissions
+  ansible.builtin.file:
+    path: "{{ webserver_ssl_certificate }}"
+    mode: '0644'
+    owner: root
+    group: root
+  when: 
+    - ssl_cert_file is defined
+    - ssl_cert_file.stat.exists
+  tags: [ssl, permissions]
+
+- name: (ssl) Validate SSL private key file permissions
+  ansible.builtin.file:
+    path: "{{ webserver_ssl_certificate_key }}"
+    mode: '0600'
+    owner: root
+    group: root
+  when: 
+    - ssl_key_file is defined
+    - ssl_key_file.stat.exists
+  tags: [ssl, permissions]
+
+- name: (ssl) Get SSL certificate modulus for validation
+  ansible.builtin.command: >
+    openssl x509 -noout -modulus -in {{ webserver_ssl_certificate }} | openssl md5
+  register: ssl_cert_modulus
+  when: 
+    - ssl_cert_file is defined
+    - ssl_cert_file.stat.exists
+  changed_when: false
+  tags: [ssl, validation]
+
+- name: (ssl) Get SSL private key modulus for validation
+  ansible.builtin.command: >
+    openssl rsa -noout -modulus -in {{ webserver_ssl_certificate_key }} | openssl md5
+  register: ssl_key_modulus
+  when: 
+    - ssl_key_file is defined
+    - ssl_key_file.stat.exists
+  changed_when: false
+  no_log: true
+  tags: [ssl, validation]
+
+- name: (ssl) Get SSL certificate information
+  ansible.builtin.command: >
+    openssl x509 -noout -subject -issuer -dates -in {{ webserver_ssl_certificate }}
+  register: ssl_cert_info
+  when: 
+    - ssl_cert_file is defined
+    - ssl_cert_file.stat.exists
+  changed_when: false
+  tags: [ssl, validation]
+
+- name: (ssl) Validate certificate and key match
+  ansible.builtin.assert:
+    that: ssl_cert_modulus.stdout == ssl_key_modulus.stdout
+    fail_msg: |
+      SSL certificate and private key do not match!
+      Certificate: {{ webserver_ssl_certificate }}
+      Private Key: {{ webserver_ssl_certificate_key }}
+      
+      The SSL certificate and private key must be a matching pair.
+    success_msg: "✅ SSL certificate and private key match"
+  when: 
+    - ssl_cert_modulus is defined
+    - ssl_key_modulus is defined
+    - ssl_cert_modulus.stdout is defined
+    - ssl_key_modulus.stdout is defined
+  tags: [ssl, validation]
+
+- name: (ssl) Check SSL certificate expiration
+  ansible.builtin.command: >
+    openssl x509 -noout -checkend 2592000 -in {{ webserver_ssl_certificate }}
+  register: ssl_cert_expiry_check
+  when: 
+    - ssl_cert_file is defined
+    - ssl_cert_file.stat.exists
+  changed_when: false
+  failed_when: false
+  tags: [ssl, validation]
+
+- name: (ssl) Display SSL validation results
+  ansible.builtin.debug:
+    msg: |
+      🔒 SSL Certificate Validation for {{ app_name }}:
+      
+      Certificate File: {{ ssl_cert_file.stat.exists | default(false) | ternary('✅ Found', '❌ Missing') }}
+      Private Key File: {{ ssl_key_file.stat.exists | default(false) | ternary('✅ Found', '❌ Missing') }}
+      
+      {% if ssl_cert_file is defined and ssl_cert_file.stat.exists and ssl_key_file is defined and ssl_key_file.stat.exists %}
+      Certificate/Key Match: {{ (ssl_cert_modulus.stdout == ssl_key_modulus.stdout) | ternary('✅ Valid pair', '❌ Mismatch') }}
+      Certificate Expiry: {{ ssl_cert_expiry_check.rc == 0 | ternary('✅ Valid (>30 days)', '⚠️ Expires soon (<30 days)') }}
+      
+      {% if ssl_cert_info is defined %}
+      Certificate Details:
+      {{ ssl_cert_info.stdout }}
+      {% endif %}
+      {% endif %}
+      
+      {% if not (ssl_cert_file.stat.exists | default(false)) or not (ssl_key_file.stat.exists | default(false)) %}
+      ⚠️  SSL is enabled but certificates are missing:
+      - Certificate: {{ webserver_ssl_certificate | default('Not specified') }}
+      - Private Key: {{ webserver_ssl_certificate_key | default('Not specified') }}
+      {% endif %}
+  tags: [ssl, validation]
+
+- name: (ssl) Fail if SSL certificates are missing and strict mode is enabled
+  ansible.builtin.fail:
+    msg: |
+      SSL is enabled but required certificates are missing or invalid:
+      
+      Certificate: {{ webserver_ssl_certificate | default('Not specified') }}
+      Status: {{ ssl_cert_file.stat.exists | default(false) | ternary('Found', 'Missing') }}
+      
+      Private Key: {{ webserver_ssl_certificate_key | default('Not specified') }}
+      Status: {{ ssl_key_file.stat.exists | default(false) | ternary('Found', 'Missing') }}
+      
+      {% if ssl_cert_file.stat.exists | default(false) and ssl_key_file.stat.exists | default(false) and ssl_cert_modulus.stdout != ssl_key_modulus.stdout %}
+      Certificate and private key do not match!
+      {% endif %}
+      
+      To resolve this issue:
+      1. Provide valid SSL certificates, or
+      2. Set webserver_enable_ssl: false, or
+      3. Set laravel_webserver_ssl_strict: false to continue with warnings
+  when: 
+    - laravel_webserver_ssl_strict | default(true) | bool
+    - >
+      not (ssl_cert_file.stat.exists | default(false)) or 
+      not (ssl_key_file.stat.exists | default(false)) or
+      (ssl_cert_modulus is defined and ssl_key_modulus is defined and 
+       ssl_cert_modulus.stdout != ssl_key_modulus.stdout)
+  tags: [ssl, validation]
+
+- name: (ssl) Display SSL warning if certificates are missing but not in strict mode
+  ansible.builtin.debug:
+    msg: |
+      ⚠️ SSL Warning for {{ app_name }}:
+      
+      SSL is enabled but certificates are missing or invalid.
+      The webserver configuration will be created but SSL won't work properly.
+      
+      Certificate: {{ webserver_ssl_certificate | default('Not specified') }} - {{ ssl_cert_file.stat.exists | default(false) | ternary('Found', 'Missing') }}
+      Private Key: {{ webserver_ssl_certificate_key | default('Not specified') }} - {{ ssl_key_file.stat.exists | default(false) | ternary('Found', 'Missing') }}
+      
+      To fix this, provide valid SSL certificates and re-run the deployment.
+  when: 
+    - not (laravel_webserver_ssl_strict | default(true) | bool)
+    - >
+      not (ssl_cert_file.stat.exists | default(false)) or 
+      not (ssl_key_file.stat.exists | default(false)) or
+      (ssl_cert_modulus is defined and ssl_key_modulus is defined and 
+       ssl_cert_modulus.stdout != ssl_key_modulus.stdout)
+  tags: [ssl, validation]

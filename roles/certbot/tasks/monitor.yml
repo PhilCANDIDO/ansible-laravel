@@ -1,0 +1,77 @@
+---
+# roles/certbot/tasks/monitor.yml
+# SSL certificate monitoring and alerting tasks
+
+- name: (monitor) Create certificate monitoring script
+  ansible.builtin.template:
+    src: ssl-monitor.sh.j2
+    dest: /usr/local/bin/ssl-monitor.sh
+    owner: root
+    group: root
+    mode: '0755'
+  tags: [certbot, monitor, script]
+
+- name: (monitor) Configure certificate expiry monitoring cron
+  ansible.builtin.cron:
+    name: "SSL certificate expiry monitoring"
+    cron_file: ssl-monitoring
+    minute: "0"
+    hour: "8"
+    user: root
+    job: "/usr/local/bin/ssl-monitor.sh"
+    state: present
+  when: certbot_monitor_expiry | bool
+  tags: [certbot, monitor, cron]
+
+- name: (monitor) Create Nagios-compatible check script
+  ansible.builtin.template:
+    src: check_ssl_cert.sh.j2
+    dest: /usr/local/bin/check_ssl_cert.sh
+    owner: root
+    group: root
+    mode: '0755'
+  tags: [certbot, monitor, nagios]
+
+- name: (monitor) Create certificate status report script
+  ansible.builtin.template:
+    src: ssl-status-report.sh.j2
+    dest: /usr/local/bin/ssl-status-report.sh
+    owner: root
+    group: root
+    mode: '0755'
+  tags: [certbot, monitor, report]
+
+- name: (monitor) Install mail utilities for notifications
+  ansible.builtin.package:
+    name: "{{ mail_package }}"
+    state: present
+  vars:
+    mail_package: "{{ 'mailutils' if ansible_os_family == 'Debian' else 'mailx' }}"
+  when: certbot_expiry_notification_email != ""
+  tags: [certbot, monitor, mail]
+
+- name: (monitor) Check current certificate status
+  ansible.builtin.command: /usr/local/bin/ssl-status-report.sh
+  register: ssl_status_check
+  changed_when: false
+  failed_when: false
+  tags: [certbot, monitor, check]
+
+- name: (monitor) Display certificate monitoring setup
+  ansible.builtin.debug:
+    msg: |
+      📊 SSL Certificate Monitoring:
+      
+      🔍 Monitoring Tools:
+      ├── Expiry monitor: /usr/local/bin/ssl-monitor.sh
+      ├── Nagios check: /usr/local/bin/check_ssl_cert.sh
+      ├── Status report: /usr/local/bin/ssl-status-report.sh
+      └── Daily check: 08:00 via cron
+      
+      📧 Notifications:
+      ├── Email alerts: {{ certbot_expiry_notification_email if certbot_expiry_notification_email else 'Disabled' }}
+      └── Alert threshold: {{ certbot_expiry_notification_days }} days
+      
+      📋 Current Status:
+      {{ ssl_status_check.stdout if ssl_status_check.stdout is defined else 'Unable to check status' }}
+  tags: [certbot, monitor, summary]

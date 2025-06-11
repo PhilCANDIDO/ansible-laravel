@@ -1,0 +1,140 @@
+---
+# roles/certbot/defaults/main.yml
+# Default variables for Certbot SSL role
+
+# =============================================================================
+# CERTBOT INSTALLATION CONFIGURATION
+# =============================================================================
+certbot_install_method: "package"  # Options: package, snap, pip
+certbot_version: "latest"
+certbot_install_from_source: false
+
+# =============================================================================
+# SSL CERTIFICATE CONFIGURATION
+# =============================================================================
+# Enable SSL certificate generation
+certbot_auto_generate: false
+certbot_auto_configure_webserver: true
+
+# Let's Encrypt email (REQUIRED when certbot_auto_generate is true)
+certbot_email: ""
+
+# Certificate domains - automatically populated from webserver config
+certbot_domains: []
+  # Example:
+  # - "example.com"
+  # - "www.example.com"
+
+# Challenge method
+certbot_challenge_method: "webroot"  # Options: webroot, standalone, dns
+certbot_webroot_path: "/var/www/html"
+
+# =============================================================================
+# DNS CHALLENGE CONFIGURATION (for wildcard certificates)
+# =============================================================================
+certbot_dns_plugin: ""  # Options: cloudflare, route53, digitalocean, etc.
+certbot_dns_credentials_file: "/etc/letsencrypt/dns-credentials.ini"
+certbot_dns_propagation_seconds: 60
+
+# Cloudflare DNS configuration
+certbot_cloudflare_email: ""
+certbot_cloudflare_api_token: ""
+
+# Route53 DNS configuration
+certbot_aws_access_key_id: ""
+certbot_aws_secret_access_key: ""
+
+# =============================================================================
+# CERTIFICATE MANAGEMENT
+# =============================================================================
+# Certificate key size
+certbot_rsa_key_size: 4096
+
+# Test mode (staging environment)
+certbot_test_mode: false
+certbot_staging: "{{ certbot_test_mode }}"
+
+# Force renewal
+certbot_force_renewal: false
+
+# =============================================================================
+# AUTOMATIC RENEWAL CONFIGURATION
+# =============================================================================
+certbot_auto_renew: true
+certbot_auto_renew_user: "root"
+certbot_auto_renew_minute: "{{ 59 | random(seed=inventory_hostname) }}"
+certbot_auto_renew_hour: "{{ 23 | random(seed=inventory_hostname) }}"
+
+# Renewal hooks
+certbot_pre_hook: ""
+certbot_post_hook: "systemctl reload {{ webserver_type | default('nginx') }}"
+certbot_deploy_hook: ""
+
+# =============================================================================
+# WEBSERVER INTEGRATION
+# =============================================================================
+# Automatically update webserver configuration
+certbot_update_webserver_config: true
+
+# Services to restart after certificate generation/renewal
+certbot_services_to_restart:
+  - "{{ webserver_type | default('nginx') }}"
+
+# Services to stop during standalone challenge
+certbot_services_to_stop: []
+
+# =============================================================================
+# SECURITY CONFIGURATION
+# =============================================================================
+# SSL protocols and ciphers (modern configuration)
+certbot_ssl_protocols: "TLSv1.2 TLSv1.3"
+certbot_ssl_ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+certbot_ssl_prefer_server_ciphers: "off"
+
+# HSTS configuration
+certbot_hsts_max_age: 31536000
+certbot_hsts_include_subdomains: true
+certbot_hsts_preload: false
+
+# =============================================================================
+# BACKUP AND MONITORING
+# =============================================================================
+# Backup certificates
+certbot_backup_certificates: true
+certbot_backup_dir: "/root/ssl-backup"
+certbot_backup_retention_days: 30
+
+# Monitoring and alerts
+certbot_monitor_expiry: true
+certbot_expiry_notification_email: "{{ certbot_email }}"
+certbot_expiry_notification_days: 14
+
+# =============================================================================
+# ADVANCED CONFIGURATION
+# =============================================================================
+# Custom certbot arguments
+certbot_extra_args: ""
+
+# Custom certificate directory
+certbot_config_dir: "/etc/letsencrypt"
+certbot_work_dir: "/var/lib/letsencrypt"
+certbot_logs_dir: "/var/log/letsencrypt"
+
+# Rate limiting considerations
+certbot_agree_tos: true
+certbot_non_interactive: true
+
+# =============================================================================
+# INTEGRATION VARIABLES
+# =============================================================================
+# Automatically detect domains from webserver configuration
+certbot_auto_detect_domains: true
+
+# Certificate storage paths (auto-generated)
+certbot_cert_path: "{{ certbot_config_dir }}/live/{{ certbot_primary_domain | default(webserver_server_name) }}/cert.pem"
+certbot_fullchain_path: "{{ certbot_config_dir }}/live/{{ certbot_primary_domain | default(webserver_server_name) }}/fullchain.pem"
+certbot_private_key_path: "{{ certbot_config_dir }}/live/{{ certbot_primary_domain | default(webserver_server_name) }}/privkey.pem"
+certbot_chain_path: "{{ certbot_config_dir }}/live/{{ certbot_primary_domain | default(webserver_server_name) }}/chain.pem"
+
+# Primary domain (first in the list)
+certbot_primary_domain: "{{ certbot_domains[0] if certbot_domains | length > 0 else webserver_server_name | default('') }}"

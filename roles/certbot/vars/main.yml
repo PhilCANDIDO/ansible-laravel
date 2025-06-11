@@ -1,0 +1,19 @@
+---
+# roles/certbot/vars/default.yml
+# Default fallback variables
+
+certbot_packages:
+  - "certbot"
+
+certbot_dns_packages:
+  cloudflare: "certbot-dns-cloudflare"
+  route53: "certbot-dns-route53"
+
+certbot_config_dir: "/etc/letsencrypt"
+certbot_work_dir: "/var/lib/letsencrypt"
+certbot_logs_dir: "/var/log/letsencrypt"
+
+nginx_service: "nginx"
+apache_service: "{{ 'apache2' if ansible_os_family == 'Debian' else 'httpd' }}"
+
+certbot_default_webroot: "/var/www/html"

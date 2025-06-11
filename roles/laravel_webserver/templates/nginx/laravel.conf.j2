@@ -1,0 +1,262 @@
+# Laravel NGINX server configuration for {{ app_name }}
+# Managed by Ansible - DO NOT EDIT MANUALLY
+# Generated on {{ ansible_date_time.iso8601 }}
+
+{% if laravel_webserver_rate_limiting | default(false) | bool %}
+# Rate limiting configuration
+limit_req_zone $binary_remote_addr zone={{ app_name }}_limit:{{ laravel_webserver_rate_zone_size | default('10m') }} rate={{ laravel_webserver_rate_limit | default('10r/s') }};
+{% endif %}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ webserver_server_name }}{% for alias in webserver_server_aliases | default([]) %} {{ alias }}{% endfor %};
+    root {{ webserver_public_root }};
+
+    {% if laravel_webserver_logging | default(true) | bool %}
+    # Application-specific access log
+    access_log {{ laravel_webserver_access_log }};
+    error_log {{ laravel_webserver_error_log }};
+    {% endif %}
+
+    {% if laravel_webserver_security | default(true) | bool %}
+    # Security headers
+    add_header X-Frame-Options "{{ laravel_webserver_security_headers.x_frame_options | default('SAMEORIGIN') }}";
+    add_header X-Content-Type-Options "{{ laravel_webserver_security_headers.x_content_type_options | default('nosniff') }}";
+    add_header X-XSS-Protection "{{ laravel_webserver_security_headers.x_xss_protection | default('1; mode=block') }}";
+    {% endif %}
+
+    index index.php index.html;
+    charset utf-8;
+
+    client_max_body_size {{ webserver_client_max_body_size }};
+
+    {% if laravel_webserver_rate_limiting | default(false) | bool %}
+    # Apply rate limiting
+    location / {
+        limit_req zone={{ app_name }}_limit burst={{ laravel_webserver_rate_burst | default('20') }} nodelay;
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+    {% else %}
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+    {% endif %}
+
+    location = /favicon.ico { 
+        access_log off; 
+        log_not_found off; 
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    location = /robots.txt  { 
+        access_log off; 
+        log_not_found off; 
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass {{ webserver_php_fpm_socket }};
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_hide_header X-Powered-By;
+        
+        # PHP-FPM optimization
+        fastcgi_read_timeout {{ laravel_webserver_php_timeout | default('60') }};
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+        fastcgi_busy_buffers_size 256k;
+        
+        # PHP memory and upload settings
+        fastcgi_param PHP_VALUE "memory_limit={{ laravel_webserver_php_memory | default('256M') }}
+                                upload_max_filesize={{ laravel_webserver_php_upload_size | default('64M') }}
+                                post_max_size={{ laravel_webserver_php_post_size | default('64M') }}";
+    }
+
+    {% if laravel_webserver_security | default(true) | bool %}
+    # Security: Block access to sensitive files and directories
+    {% for protected_dir in laravel_webserver_protected_dirs | default([]) %}
+    location ~ ^/{{ protected_dir }}(/.*)?$ {
+        deny all;
+        return 404;
+    }
+    {% endfor %}
+
+    # Block access to hidden files (except .well-known for Let's Encrypt)
+    location ~ /\.(?!well-known).* {
+        deny all;
+        return 404;
+    }
+    {% endif %}
+
+    {% if laravel_webserver_caching | default(true) | bool %}
+    # Static files caching
+    location ~* \.({{ laravel_webserver_static_extensions | default(['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'webp']) | join('|') }})$ {
+        expires {{ laravel_webserver_static_expires | default('1y') }};
+        add_header Cache-Control "public, immutable";
+        add_header Vary "Accept-Encoding";
+        try_files $uri =404;
+    }
+    {% endif %}
+
+    {% if laravel_webserver_telescope_restrictions | default(false) | bool and laravel_telescope_install | default(false) | bool %}
+    # Laravel Telescope access restrictions
+    location ^~ /{{ laravel_telescope_path | default('telescope') }} {
+        {% if laravel_telescope_allowed_ips is defined and laravel_telescope_allowed_ips | length > 0 %}
+        # IP-based access control for Telescope
+        {% for ip in laravel_telescope_allowed_ips %}
+        allow {{ ip }};
+        {% endfor %}
+        deny all;
+        {% endif %}
+        
+        {% if laravel_webserver_rate_limiting | default(false) | bool %}
+        limit_req zone={{ app_name }}_limit burst=5 nodelay;
+        {% endif %}
+        
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+    {% endif %}
+
+{% if webserver_enable_ssl %}
+    # Redirect HTTP to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name {{ webserver_server_name }}{% for alias in webserver_server_aliases | default([]) %} {{ alias }}{% endfor %};
+    root {{ webserver_public_root }};
+
+    {% if laravel_webserver_logging | default(true) | bool %}
+    # Application-specific SSL access log
+    access_log {{ laravel_webserver_ssl_access_log }};
+    error_log {{ laravel_webserver_ssl_error_log }};
+    {% endif %}
+
+    # SSL Configuration
+    ssl_certificate {{ webserver_ssl_certificate }};
+    ssl_certificate_key {{ webserver_ssl_certificate_key }};
+    
+    # Modern SSL configuration
+    ssl_protocols {{ laravel_webserver_ssl_protocols | default('TLSv1.2 TLSv1.3') }};
+    ssl_ciphers {{ laravel_webserver_ssl_ciphers | default('ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384') }};
+    ssl_prefer_server_ciphers {{ laravel_webserver_ssl_prefer_server_ciphers | default('off') }};
+    ssl_session_cache {{ laravel_webserver_ssl_session_cache | default('shared:SSL:10m') }};
+    ssl_session_timeout {{ laravel_webserver_ssl_session_timeout | default('10m') }};
+    ssl_session_tickets off;
+    ssl_stapling on;
+    ssl_stapling_verify on;
+
+    {% if laravel_webserver_security | default(true) | bool %}
+    # Enhanced security headers for HTTPS
+    add_header X-Frame-Options "{{ laravel_webserver_security_headers.x_frame_options | default('SAMEORIGIN') }}";
+    add_header X-Content-Type-Options "{{ laravel_webserver_security_headers.x_content_type_options | default('nosniff') }}";
+    add_header X-XSS-Protection "{{ laravel_webserver_security_headers.x_xss_protection | default('1; mode=block') }}";
+    add_header Strict-Transport-Security "max-age={{ laravel_webserver_hsts_max_age | default('31536000') }}{{ laravel_webserver_hsts_include_subdomains | default(true) | ternary('; includeSubdomains', '') }}{{ laravel_webserver_hsts_preload | default(true) | ternary('; preload', '') }}";
+    add_header Referrer-Policy "{{ laravel_webserver_security_headers.referrer_policy | default('strict-origin-when-cross-origin') }}";
+    add_header Permissions-Policy "{{ laravel_webserver_security_headers.permissions_policy | default('geolocation=(), microphone=(), camera=()') }}";
+    {% endif %}
+
+    index index.php index.html;
+    charset utf-8;
+
+    client_max_body_size {{ webserver_client_max_body_size }};
+
+    {% if laravel_webserver_rate_limiting | default(false) | bool %}
+    # Apply rate limiting
+    location / {
+        limit_req zone={{ app_name }}_limit burst={{ laravel_webserver_rate_burst | default('20') }} nodelay;
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+    {% else %}
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+    {% endif %}
+
+    location = /favicon.ico { 
+        access_log off; 
+        log_not_found off; 
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    location = /robots.txt  { 
+        access_log off; 
+        log_not_found off; 
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    error_page 404 /index.php;
+
+    location ~ \.php$ {
+        fastcgi_pass {{ webserver_php_fpm_socket }};
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_hide_header X-Powered-By;
+        
+        # PHP-FPM optimization
+        fastcgi_read_timeout {{ laravel_webserver_php_timeout | default('60') }};
+        fastcgi_buffer_size 128k;
+        fastcgi_buffers 4 256k;
+        fastcgi_busy_buffers_size 256k;
+        
+        # PHP memory and upload settings
+        fastcgi_param PHP_VALUE "memory_limit={{ laravel_webserver_php_memory | default('256M') }}
+                                upload_max_filesize={{ laravel_webserver_php_upload_size | default('64M') }}
+                                post_max_size={{ laravel_webserver_php_post_size | default('64M') }}";
+    }
+
+    {% if laravel_webserver_security | default(true) | bool %}
+    # Security: Block access to sensitive files and directories
+    {% for protected_dir in laravel_webserver_protected_dirs | default([]) %}
+    location ~ ^/{{ protected_dir }}(/.*)?$ {
+        deny all;
+        return 404;
+    }
+    {% endfor %}
+
+    # Block access to hidden files (except .well-known for Let's Encrypt)
+    location ~ /\.(?!well-known).* {
+        deny all;
+        return 404;
+    }
+    {% endif %}
+
+    {% if laravel_webserver_caching | default(true) | bool %}
+    # Static files caching
+    location ~* \.({{ laravel_webserver_static_extensions | default(['css', 'js', 'png', 'jpg', 'jpeg', 'gif', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'webp']) | join('|') }})$ {
+        expires {{ laravel_webserver_static_expires | default('1y') }};
+        add_header Cache-Control "public, immutable";
+        add_header Vary "Accept-Encoding";
+        try_files $uri =404;
+    }
+    {% endif %}
+
+    {% if laravel_webserver_telescope_restrictions | default(false) | bool and laravel_telescope_install | default(false) | bool %}
+    # Laravel Telescope access restrictions
+    location ^~ /{{ laravel_telescope_path | default('telescope') }} {
+        {% if laravel_telescope_allowed_ips is defined and laravel_telescope_allowed_ips | length > 0 %}
+        # IP-based access control for Telescope
+        {% for ip in laravel_telescope_allowed_ips %}
+        allow {{ ip }};
+        {% endfor %}
+        deny all;
+        {% endif %}
+        
+        {% if laravel_webserver_rate_limiting | default(false) | bool %}
+        limit_req zone={{ app_name }}_limit burst=5 nodelay;
+        {% endif %}
+        
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+    {% endif %}
+{% endif %}
+}

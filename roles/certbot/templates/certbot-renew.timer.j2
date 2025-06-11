@@ -1,0 +1,12 @@
+## roles/certbot/templates/certbot-renew.timer.j2
+[Unit]
+Description=Run certbot renewal daily
+Requires=certbot-renew.service
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=3600
+Persistent=true
+
+[Install]
+WantedBy=timers.target
